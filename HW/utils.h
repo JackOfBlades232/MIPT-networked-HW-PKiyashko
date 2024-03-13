@@ -7,6 +7,7 @@
 #include <vector>
 
 #define ARR_LEN(_arr) (sizeof(_arr)/sizeof((_arr)[0]))
+#define STR_LEN(_str) (ARR_LEN(_str)-1)
 #define VEC_BYTE_SIZE(_vec) ((_vec).size() * sizeof((_vec)[0]))
 
 // @TODO: improve, this seems strange
@@ -24,7 +25,6 @@ inline void send_packet(ENetPeer *peer, void *data, size_t data_size, bool is_re
 
     ENetPacket *packet = enet_packet_create(data, data_size, flags);
     enet_peer_send(peer, channel, packet);
-    enet_packet_destroy(packet);
 }
 
 #endif

@@ -34,7 +34,7 @@ int main(int argc, const char **argv)
 
     ENetAddress game_serv_address;
     enet_address_set_host(&game_serv_address, "localhost");
-    address.port = 4221;
+    game_serv_address.port = 4221;
 
     bool game_started = false;
     std::vector<ENetPeer *> peers;
@@ -44,16 +44,18 @@ int main(int argc, const char **argv)
         while (enet_host_service(server, &event, 10) > 0) {
             switch (event.type) {
             case ENET_EVENT_TYPE_CONNECT:
+            {
                 printf("Connection with %x:%u established\n", event.peer->address.host, event.peer->address.port);
                 peers.push_back(event.peer);
-                break;
+                if (game_started)
+                    send_packet(event.peer, &game_serv_address, sizeof(game_serv_address), true, true); 
+            } break;
             case ENET_EVENT_TYPE_RECEIVE:
             {
                 printf("Packet received '%s'\n", event.packet->data);
-                if (ARR_LEN("start") != event.packet->dataLength || strcmp("start", (const char *)event.packet->data) != 0) {
-                    if (game_started)
-                        send_packet(event.peer, &game_serv_address, sizeof(game_serv_address), true, true); 
-                    else {
+                if (ARR_LEN("start") == event.packet->dataLength && strcmp("start", (const char *)event.packet->data) == 0) {
+                    if (!game_started) {
+                        game_started = true;
                         for (ENetPeer *peer : peers)
                             send_packet(peer, &game_serv_address, sizeof(game_serv_address), true, true); 
                     }

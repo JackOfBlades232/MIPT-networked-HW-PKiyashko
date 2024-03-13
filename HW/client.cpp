@@ -1,4 +1,5 @@
 #include "utils.h"
+#include "common.h"
 #include "raylib.h"
 #include <enet/enet.h>
 #include <iostream>
@@ -8,7 +9,6 @@
 enum player_state_t {
     ps_waiting_for_lobby_conn,
     ps_in_lobby,
-    ps_waiting_for_server_addr,
     ps_waiting_for_server_conn,
     ps_on_server
 };
@@ -34,7 +34,7 @@ int main(int argc, const char **argv)
         return 1;
     }
 
-    ENetHost *client = enet_host_create(nullptr, 1, 2, 0, 0);
+    ENetHost *client = enet_host_create(nullptr, 2, 2, 0, 0);
     if (!client) {
         printf("Cannot create ENet client\n");
         return 1;
@@ -54,6 +54,7 @@ int main(int argc, const char **argv)
     ENetAddress server_address;
 
     player_state_t state = ps_waiting_for_lobby_conn;
+    std::vector<player_t> other_players;
 
     uint32_t time_start = enet_time_get();
     uint32_t last_pos_sent_time = time_start;
@@ -80,7 +81,7 @@ int main(int argc, const char **argv)
             case ENET_EVENT_TYPE_RECEIVE:
                 printf("Packet received '%s'\n", event.packet->data);
                 switch (state) {
-                case ps_waiting_for_server_addr:
+                case ps_in_lobby:
                 {
                     assert(event.packet->dataLength == sizeof(server_address));
                     memcpy(&server_address, event.packet->data, sizeof(server_address));
@@ -92,7 +93,29 @@ int main(int argc, const char **argv)
                     state = ps_waiting_for_server_conn;
                 } break;
                 case ps_on_server:
-                    // @TODO: display the players+ping
+                    assert(event.packet->data[event.packet->dataLength-1] == '\0');
+                    const char *msg = (const char *)event.packet->data;
+                    if (strncmp(msg, "players", STR_LEN("players")) == 0) {
+                        const char *p = msg;
+                        while (p = strchr(p, ':') + 1) {
+                            // Here we use the fact that names and hashes are not too long
+                            char name_buf[32];
+                            char hash_buf[32];
+
+                            const char *hash_p = strchr(p, ':');
+                            assert(hash_p);
+                            ++hash_p;
+                            const char *delim = strchr(hash_p, ':');
+                            if (!delim) delim = msg + event.packet->dataLength - 1;
+
+                            assert(hash_p - p - 1 < sizeof(name_buf));
+                            strncpy(name_buf, p, hash_p - p - 1);
+                            assert(delim - hash_p < sizeof(hash_buf));
+                            strncpy(hash_buf, hash_p, delim - hash_p);
+
+                            // @TODO: is this the way? God knows i dont think so
+                        }
+                    }
                     break;
                 default:
                     assert(0);
@@ -108,15 +131,13 @@ int main(int argc, const char **argv)
         }
 
         uint32_t cur_time = enet_time_get();
-        if (state == ps_on_server && cur_time - last_pos_sent_time > 100) {
-            struct { float x, y; } pos_packet = { posx, posy };
-            send_packet(server_peer, &pos_packet, sizeof(pos_packet), false, true);
+        if (state == ps_on_server && cur_time - last_pos_sent_time > 500) {
+            char buf[64];
+            size_t buf_len = snprintf(buf, sizeof(buf), "pos:(%f,%f)", posx, posy) + 1;
+            send_packet(server_peer, buf, buf_len, false, true);
             last_pos_sent_time = cur_time;
-        } else if (state == ps_in_lobby && IsKeyDown(KEY_ENTER)) {
+        } else if (state == ps_in_lobby && IsKeyDown(KEY_ENTER))
             send_packet(lobby_peer, (void *)"start", ARR_LEN("start"), true, true);
-            state = ps_waiting_for_server_addr;
-        }
-
 
         bool left = IsKeyDown(KEY_LEFT);
         bool right = IsKeyDown(KEY_RIGHT);

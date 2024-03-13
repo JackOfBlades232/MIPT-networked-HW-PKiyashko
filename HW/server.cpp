@@ -1,11 +1,11 @@
 #include "utils.h"
+#include "common.h"
 #include <enet/enet.h>
 #include <iostream>
 
 struct client_t {
     ENetPeer *peer;
-    uint64_t hash;
-    const char *name;
+    player_t data;
 };
 
 static const char *egyptian_names[32] =
@@ -76,11 +76,12 @@ int main(int argc, const char **argv)
     address.port = 4221;
 
     ENetHost *server = enet_host_create(&address, 32, 2, 0, 0);
-
     if (!server) {
         printf("Cannot create ENet server\n");
         return 1;
     }
+
+    std::vector<client_t> clients;
 
     uint32_t time_start = enet_time_get();
     uint32_t last_pings_sent_time = time_start;
