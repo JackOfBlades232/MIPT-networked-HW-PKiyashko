@@ -16,6 +16,10 @@ set(LOBBY_SOURCES
     lobby.cpp
     )
 
+set(SERVER_SOURCES
+    server.cpp
+    )
+
 
 include_directories("../3rdParty/enet/include")
 
@@ -32,9 +36,14 @@ add_executable(lobby ${LOBBY_SOURCES})
 target_link_libraries(lobby PUBLIC project_options project_warnings)
 target_link_libraries(lobby PUBLIC enet)
 
+add_executable(server ${SERVER_SOURCES})
+target_link_libraries(server PUBLIC project_options project_warnings)
+target_link_libraries(server PUBLIC enet)
+
 if(MSVC)
   target_link_libraries(client PUBLIC ws2_32.lib winmm.lib)
   target_link_libraries(lobby PUBLIC ws2_32.lib winmm.lib)
+  target_link_libraries(server PUBLIC ws2_32.lib winmm.lib)
 endif()
 
 
