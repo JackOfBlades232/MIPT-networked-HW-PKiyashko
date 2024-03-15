@@ -94,28 +94,7 @@ int main(int argc, const char **argv)
                 } break;
                 case ps_on_server:
                     assert(event.packet->data[event.packet->dataLength-1] == '\0');
-                    const char *msg = (const char *)event.packet->data;
-                    if (strncmp(msg, "players", STR_LEN("players")) == 0) {
-                        const char *p = msg;
-                        while (p = strchr(p, ':') + 1) {
-                            // Here we use the fact that names and hashes are not too long
-                            char name_buf[32];
-                            char hash_buf[32];
-
-                            const char *hash_p = strchr(p, ':');
-                            assert(hash_p);
-                            ++hash_p;
-                            const char *delim = strchr(hash_p, ':');
-                            if (!delim) delim = msg + event.packet->dataLength - 1;
-
-                            assert(hash_p - p - 1 < sizeof(name_buf));
-                            strncpy(name_buf, p, hash_p - p - 1);
-                            assert(delim - hash_p < sizeof(hash_buf));
-                            strncpy(hash_buf, hash_p, delim - hash_p);
-
-                            // @TODO: is this the way? God knows i dont think so
-                        }
-                    }
+                    // @TODO: string parsing
                     break;
                 default:
                     assert(0);

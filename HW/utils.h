@@ -10,6 +10,9 @@
 #define STR_LEN(_str) (ARR_LEN(_str)-1)
 #define VEC_BYTE_SIZE(_vec) ((_vec).size() * sizeof((_vec)[0]))
 
+#define PACKET_IS_STAT_STRING(_packet, _str) \
+    (ARR_LEN(_str) == (_packet)->dataLength && strcmp(_str, (const char *)(_packet)->data) == 0)
+
 // @TODO: improve, this seems strange
 inline void send_packet(ENetPeer *peer, void *data, size_t data_size, bool is_reliable, bool is_small)
 {
