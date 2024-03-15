@@ -2,9 +2,10 @@
 #include "common.h"
 #include "raylib.h"
 #include <enet/enet.h>
-#include <iostream>
 #include <cstring>
 #include <cassert>
+#include <iostream>
+#include <map>
 
 enum player_state_t {
     ps_waiting_for_lobby_conn,
@@ -54,7 +55,7 @@ int main(int argc, const char **argv)
     ENetAddress server_address;
 
     player_state_t state = ps_waiting_for_lobby_conn;
-    std::vector<player_t> other_players;
+    std::map<uint64_t, std::string> player_name_map;
 
     uint32_t time_start = enet_time_get();
     uint32_t last_pos_sent_time = time_start;
@@ -93,8 +94,18 @@ int main(int argc, const char **argv)
                     state = ps_waiting_for_server_conn;
                 } break;
                 case ps_on_server:
-                    assert(event.packet->data[event.packet->dataLength-1] == '\0');
-                    // @TODO: string parsing
+                    assert(packet_is_string(event.packet));
+                    if (PACKET_IS_PREFIXED_BY_STAT_STRING(event.packet, "newplayer")) {
+                        const char *crawler = (const char *)event.packet->data + STR_LEN("newplayer") + 1;
+                        player_t player_data;
+                        size_t chars_consumed = fetch_player_data_from_message(crawler, player_data);
+                        assert(chars_consumed != (size_t)(-1));
+                        assert(crawler[chars_consumed] == '\0');
+                        player_name_map.emplace(player_data.hash, std::move(player_data.name));
+                    } else if (PACKET_IS_PREFIXED_BY_STAT_STRING(event.packet, "playerlist")) {
+                        // @TODO: pull out one-name parsing & loop
+                    }
+                    // @TODO: ping recv & store (+ prune map for dangling elems)
                     break;
                 default:
                     assert(0);
@@ -125,6 +136,8 @@ int main(int argc, const char **argv)
         constexpr float spd = 10.f;
         posx += ((left ? -1.f : 0.f) + (right ? 1.f : 0.f)) * dt * spd;
         posy += ((up ? -1.f : 0.f) + (down ? 1.f : 0.f)) * dt * spd;
+
+        // @TODO: pings display
 
         BeginDrawing();
         ClearBackground(BLACK);

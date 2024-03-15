@@ -1,8 +1,8 @@
 #include "utils.h"
 #include <enet/enet.h>
+#include <cstring>
 #include <iostream>
 #include <vector>
-#include <cstring>
 
 int main(int argc, const char **argv)
 {
@@ -41,7 +41,7 @@ int main(int argc, const char **argv)
             case ENET_EVENT_TYPE_RECEIVE:
             {
                 printf("Packet received '%s'\n", event.packet->data);
-                if (PACKET_IS_STAT_STRING(event.packet, "start")) {
+                if (packet_is_string(event.packet) && PACKET_IS_STAT_STRING(event.packet, "start")) {
                     if (!game_started) {
                         game_started = true;
                         for (size_t i = 0; i < server->connectedPeers; i++)
