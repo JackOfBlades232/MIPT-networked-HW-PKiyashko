@@ -48,10 +48,6 @@ int main(int argc, const char **argv)
                             send_packet(&server->peers[i], &game_serv_address, sizeof(game_serv_address), true, true); 
                     }
                 }
-                else {
-                    send_packet(event.peer, (void *)"You f*@#ed up", sizeof("You f*@#ed up"), true, true); 
-                    enet_peer_disconnect(event.peer, 0);
-                }
                 enet_packet_destroy(event.packet);
             } break;
             case ENET_EVENT_TYPE_DISCONNECT:

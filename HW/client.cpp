@@ -6,6 +6,7 @@
 #include <cassert>
 #include <iostream>
 #include <map>
+#include <vector>
 
 enum player_state_t {
     ps_waiting_for_lobby_conn,
@@ -13,6 +14,26 @@ enum player_state_t {
     ps_waiting_for_server_conn,
     ps_on_server
 };
+
+static void parse_out_player_data(std::map<uint64_t, std::string> &name_map, const char **crawler)
+{
+    player_t player_data;
+    size_t chars_consumed = fetch_player_data_from_message(*crawler, player_data);
+    assert(chars_consumed != (size_t)(-1));
+    name_map.emplace(player_data.hash, std::move(player_data.name));
+    *crawler += chars_consumed;
+}
+
+static bool parse_out_ping_data(std::vector<player_ping_t> &pings, const char **crawler)
+{
+    player_ping_t ping_data;
+    size_t chars_consumed = fetch_ping_data_from_message(*crawler, ping_data);
+    if (chars_consumed == (size_t)(-1))
+        return false;
+    pings.push_back(ping_data);
+    *crawler += chars_consumed;
+    return true;
+}
 
 int main(int argc, const char **argv)
 {
@@ -56,6 +77,7 @@ int main(int argc, const char **argv)
 
     player_state_t state = ps_waiting_for_lobby_conn;
     std::map<uint64_t, std::string> player_name_map;
+    std::vector<player_ping_t> received_pings;
 
     uint32_t time_start = enet_time_get();
     uint32_t last_pos_sent_time = time_start;
@@ -94,19 +116,29 @@ int main(int argc, const char **argv)
                     state = ps_waiting_for_server_conn;
                 } break;
                 case ps_on_server:
+                {
                     assert(packet_is_string(event.packet));
+                    const char *crawler = (const char *)event.packet->data;
                     if (PACKET_IS_PREFIXED_BY_STAT_STRING(event.packet, "newplayer")) {
-                        const char *crawler = (const char *)event.packet->data + STR_LEN("newplayer") + 1;
-                        player_t player_data;
-                        size_t chars_consumed = fetch_player_data_from_message(crawler, player_data);
-                        assert(chars_consumed != (size_t)(-1));
-                        assert(crawler[chars_consumed] == '\0');
-                        player_name_map.emplace(player_data.hash, std::move(player_data.name));
+                        crawler += STR_LEN("newplayer");
+                        parse_out_player_data(player_name_map, &crawler);
+                        assert(!*crawler);
                     } else if (PACKET_IS_PREFIXED_BY_STAT_STRING(event.packet, "playerlist")) {
-                        // @TODO: pull out one-name parsing & loop
+                        crawler += STR_LEN("playerlist");
+                        while (*crawler)
+                            parse_out_player_data(player_name_map, &crawler);
+                    } else if (PACKET_IS_PREFIXED_BY_STAT_STRING(event.packet, "pings")) {
+                        crawler += STR_LEN("pings");
+                        received_pings.clear();
+                        while (*crawler) {
+                            if (!parse_out_ping_data(received_pings, &crawler)) {
+                                received_pings.clear();
+                                break;
+                            }
+                        }
+                        // @TODO: prune name map (sometime)
                     }
-                    // @TODO: ping recv & store (+ prune map for dangling elems)
-                    break;
+                } break;
                 default:
                     assert(0);
                 }
@@ -122,8 +154,7 @@ int main(int argc, const char **argv)
 
         uint32_t cur_time = enet_time_get();
         if (state == ps_on_server && cur_time - last_pos_sent_time > 500) {
-            char buf[64];
-            size_t buf_len = snprintf(buf, sizeof(buf), "pos:(%f,%f)", posx, posy) + 1;
+            MAKE_SPRINTF_BUF(buf, buf_len, 64, "pos:(%f,%f)", posx, posy);
             send_packet(server_peer, buf, buf_len, false, true);
             last_pos_sent_time = cur_time;
         } else if (state == ps_in_lobby && IsKeyDown(KEY_ENTER))
@@ -144,6 +175,11 @@ int main(int argc, const char **argv)
         DrawText(TextFormat("Current status: %s", "unknown"), 20, 20, 20, WHITE);
         DrawText(TextFormat("My position: (%d, %d)", (int)posx, (int)posy), 20, 40, 20, WHITE);
         DrawText("List of players:", 20, 60, 20, WHITE);
+        for (size_t i = 0; i < received_pings.size(); i++) {
+            const player_ping_t &ping = received_pings[i];
+            MAKE_SPRINTF_BUF(buf, buf_len, 64, "%s: %ums", player_name_map.at(ping.hash).c_str(), ping.ping);
+            DrawText(buf, 20, 60 + (i+1)*20, 20, WHITE);
+        }
         EndDrawing();
     }
     return 0;

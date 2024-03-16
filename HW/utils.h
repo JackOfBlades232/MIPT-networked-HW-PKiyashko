@@ -14,7 +14,7 @@
     (ARR_LEN(_str) == (_packet)->dataLength && strcmp(_str, (const char *)(_packet)->data) == 0)
 
 #define PACKET_IS_PREFIXED_BY_STAT_STRING(_packet, _str) \
-    (ARR_LEN(_str) == (_packet)->dataLength && strstr(_str, (const char *)(_packet)->data) == _str)
+    (ARR_LEN(_str) <= (_packet)->dataLength && strncmp(_str, (const char *)(_packet)->data, STR_LEN(_str)) == 0)
 
 #define MAKE_SPRINTF_BUF(_bufname, _bufsizename, _bufcap, _fmt, ...)     \
     char _bufname[_bufcap];                                                      \

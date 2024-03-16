@@ -78,6 +78,22 @@ static void send_all_players_packet(ENetPeer *peer,
     send_packet(peer, (void *)msg.c_str(), msg.length()+1, true, false);
 }
 
+static void send_all_pings_packet(ENetPeer *peer,
+                                  ENetHost &host, const std::map<ENetPeer *, player_t> &players)
+{
+    std::string msg("pings");
+    for (size_t i = 0; i < host.connectedPeers; ++i) {
+        ENetPeer *other_peer = &host.peers[i];
+        if (other_peer != peer) {
+            const player_t &other_player = players.at(other_peer);
+            MAKE_SPRINTF_BUF(buf, buf_len, 64, ":%llu:%u", other_player.hash, other_peer->lastRoundTripTime);
+            msg += std::string(buf, buf_len-1);
+        }
+    }
+
+    send_packet(peer, (void *)msg.c_str(), msg.length()+1, false, false);
+}
+
 int main(int argc, const char **argv)
 {
     srand(time(nullptr));
@@ -131,8 +147,10 @@ int main(int argc, const char **argv)
         }
 
         uint32_t cur_time = enet_time_get();
-        if (cur_time - last_pings_sent_time > 500) {
-            // @TODO: send all pings to everyone (pings:%hash:%ping)
+        if (cur_time - last_pings_sent_time > 1000) {
+            for (size_t i = 0; i < server->connectedPeers; ++i)
+                send_all_pings_packet(&server->peers[i], *server, players);
+            last_pings_sent_time = cur_time;
         }
     }
 
