@@ -15,15 +15,6 @@ enum player_state_t {
     ps_on_server
 };
 
-static void parse_out_player_data(std::map<uint64_t, std::string> &name_map, const char **crawler)
-{
-    player_t player_data;
-    size_t chars_consumed = fetch_player_data_from_message(*crawler, player_data);
-    assert(chars_consumed != (size_t)(-1));
-    name_map.emplace(player_data.hash, std::move(player_data.name));
-    *crawler += chars_consumed;
-}
-
 static bool parse_out_ping_data(std::vector<player_ping_t> &pings, const char **crawler)
 {
     player_ping_t ping_data;
@@ -76,13 +67,12 @@ int main(int argc, const char **argv)
     ENetAddress server_address;
 
     player_state_t state = ps_waiting_for_lobby_conn;
-    std::map<uint64_t, std::string> player_name_map;
     std::vector<player_ping_t> received_pings;
 
     uint32_t time_start = enet_time_get();
     uint32_t last_pos_sent_time = time_start;
-    float posx = 0.f;
-    float posy = 0.f;
+    float posx = 400.f;
+    float posy = 200.f;
     while (!WindowShouldClose()) {
         const float dt = GetFrameTime();
         ENetEvent event;
@@ -118,17 +108,8 @@ int main(int argc, const char **argv)
                 case ps_on_server:
                 {
                     assert(packet_is_string(event.packet));
-                    const char *crawler = (const char *)event.packet->data;
-                    if (PACKET_IS_PREFIXED_BY_STAT_STRING(event.packet, "newplayer")) {
-                        crawler += STR_LEN("newplayer");
-                        parse_out_player_data(player_name_map, &crawler);
-                        assert(!*crawler);
-                    } else if (PACKET_IS_PREFIXED_BY_STAT_STRING(event.packet, "playerlist")) {
-                        crawler += STR_LEN("playerlist");
-                        while (*crawler)
-                            parse_out_player_data(player_name_map, &crawler);
-                    } else if (PACKET_IS_PREFIXED_BY_STAT_STRING(event.packet, "pings")) {
-                        crawler += STR_LEN("pings");
+                    if (PACKET_IS_PREFIXED_BY_STAT_STRING(event.packet, "pings")) {
+                        const char *crawler = (const char *)event.packet->data + STR_LEN("pings");
                         received_pings.clear();
                         while (*crawler) {
                             if (!parse_out_ping_data(received_pings, &crawler)) {
@@ -136,7 +117,6 @@ int main(int argc, const char **argv)
                                 break;
                             }
                         }
-                        // @TODO: prune name map (sometime)
                     }
                 } break;
                 default:
@@ -164,20 +144,19 @@ int main(int argc, const char **argv)
         bool right = IsKeyDown(KEY_RIGHT);
         bool up = IsKeyDown(KEY_UP);
         bool down = IsKeyDown(KEY_DOWN);
-        constexpr float spd = 10.f;
+        constexpr float spd = 100.f;
         posx += ((left ? -1.f : 0.f) + (right ? 1.f : 0.f)) * dt * spd;
         posy += ((up ? -1.f : 0.f) + (down ? 1.f : 0.f)) * dt * spd;
 
-        // @TODO: pings display
-
         BeginDrawing();
         ClearBackground(BLACK);
+        DrawCircle(posx, posy, 8, RED);
         DrawText(TextFormat("Current status: %s", "unknown"), 20, 20, 20, WHITE);
         DrawText(TextFormat("My position: (%d, %d)", (int)posx, (int)posy), 20, 40, 20, WHITE);
         DrawText("List of players:", 20, 60, 20, WHITE);
         for (size_t i = 0; i < received_pings.size(); i++) {
             const player_ping_t &ping = received_pings[i];
-            MAKE_SPRINTF_BUF(buf, buf_len, 64, "%s: %ums", player_name_map.at(ping.hash).c_str(), ping.ping);
+            MAKE_SPRINTF_BUF(buf, buf_len, 64, "%s: %ums", ping.id.c_str(), ping.ping);
             DrawText(buf, 20, 60 + (i+1)*20, 20, WHITE);
         }
         EndDrawing();

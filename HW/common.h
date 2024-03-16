@@ -12,7 +12,7 @@ struct player_t {
 };
 
 struct player_ping_t {
-    uint64_t hash;
+    std::string id;
     uint32_t ping;
 };
 
@@ -42,11 +42,14 @@ inline size_t fetch_ping_data_from_message(const char *msgp, player_ping_t &out_
     if (*msgp != ':')
         return (size_t)(-1);
     ++msgp;
-    char *endptr;
-    out_ping.hash = strtoull(msgp, &endptr, 10);
-    if (!endptr || *endptr != ':')
+    const char *p = msgp;
+    while (*p && *p != ':')
+        ++p;
+    if (*p != ':')
         return (size_t)(-1);
-    msgp = endptr+1;
+    out_ping.id = std::string(msgp, p - msgp);
+    msgp = p+1;
+    char *endptr;
     out_ping.ping = strtoul(msgp, &endptr, 10);
     if (!endptr || (*endptr && *endptr != ':'))
         return (size_t)(-1);
