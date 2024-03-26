@@ -31,13 +31,17 @@ void on_set_controlled_entity(ENetPacket *packet)
 void on_snapshot(ENetPacket *packet)
 {
     uint16_t eid = c_invalid_entity;
-    float x = 0.f; float y = 0.f;
-    deserialize_snapshot(packet, eid, x, y);
+    float x = 0.f; float y = 0.f; float rad = 0.f;
+    deserialize_snapshot(packet, eid, x, y, rad);
     // TODO: Direct adressing, of course!
     for (entity_t &e : entities) {
         if (e.eid == eid) {
-            e.x = x;
-            e.y = y;
+            // @TODO(PKiyashko): if here client disagrees with server, do smth
+            if (e.eid != my_entity) {
+                e.x = x;
+                e.y = y;
+            }
+            e.rad = rad;
         }
     }
 }
@@ -135,13 +139,11 @@ int main(int argc, const char **argv)
 
         BeginDrawing();
         {
-            ClearBackground(GRAY);
+            ClearBackground(DARKGRAY);
             BeginMode2D(camera);
             {
-                for (const entity_t &e : entities) {
-                    const Rectangle rect = {e.x, e.y, 10.f, 10.f};
-                    DrawRectangleRec(rect, GetColor(e.color));
-                }
+                for (const entity_t &e : entities)
+                    DrawCircle(e.x, e.y, e.rad, GetColor(e.color));
             }
             EndMode2D();
         }

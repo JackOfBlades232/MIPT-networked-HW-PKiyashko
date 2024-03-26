@@ -28,7 +28,8 @@ void on_join(ENetPacket *packet, ENetPeer *peer, ENetHost *host)
                      0x00000044 * (rand() % 5);
     float x = (rand() % 4) * 200.f;
     float y = (rand() % 4) * 200.f;
-    entity_t ent = {color, x, y, new_eid};
+    float rad = 10.f + (((float)rand() / RAND_MAX) - 0.5f) * 4.f;
+    entity_t ent = {color, x, y, rad, new_eid};
     entities.push_back(ent);
 
     controlled_map[new_eid] = peer;
@@ -96,11 +97,8 @@ int main(int argc, const char **argv)
             };
         }
         for (const entity_t &e : entities)
-            for (size_t i = 0; i < server->peerCount; ++i) {
-                ENetPeer *peer = &server->peers[i];
-                if (controlled_map[e.eid] != peer)
-                    send_snapshot(peer, e.eid, e.x, e.y);
-            }
+            for (size_t i = 0; i < server->peerCount; ++i)
+                send_snapshot(&server->peers[i], e.eid, e.x, e.y, e.rad);
     }
 
     enet_host_destroy(server);

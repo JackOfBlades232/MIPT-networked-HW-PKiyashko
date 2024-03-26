@@ -69,13 +69,14 @@ void send_entity_state(ENetPeer *peer, uint16_t eid, float x, float y)
     enet_peer_send(peer, 1, packet);
 }
 
-void send_snapshot(ENetPeer *peer, uint16_t eid, float x, float y)
+void send_snapshot(ENetPeer *peer, uint16_t eid, float x, float y, float rad)
 {
     if (peer->state != ENET_PEER_STATE_CONNECTED)
         return;
 
     ENetPacket *packet = enet_packet_create(nullptr,
-                                            sizeof(message_type_t) + sizeof(eid) + sizeof(x) + sizeof(y),
+                                            sizeof(message_type_t) + sizeof(eid) +
+                                            sizeof(x) + sizeof(y) + sizeof(rad),
                                             ENET_PACKET_FLAG_UNSEQUENCED);
 
     Bitstream bs = create_packet_writer_bs(packet);
@@ -83,6 +84,7 @@ void send_snapshot(ENetPeer *peer, uint16_t eid, float x, float y)
     bs.Write(eid);
     bs.Write(x);
     bs.Write(y);
+    bs.Write(rad);
 
     enet_peer_send(peer, 1, packet);
 }
@@ -115,12 +117,13 @@ void deserialize_entity_state(ENetPacket *packet, uint16_t &eid, float &x, float
     bs.Read(y);
 }
 
-void deserialize_snapshot(ENetPacket *packet, uint16_t &eid, float &x, float &y)
+void deserialize_snapshot(ENetPacket *packet, uint16_t &eid, float &x, float &y, float &rad)
 {
     Bitstream bs = create_packet_reader_bs(packet);
     bs.Skip<message_type_t>();
     bs.Read(eid);
     bs.Read(x);
     bs.Read(y);
+    bs.Read(rad);
 }
 
