@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.13)
 
-project(HW)
+project(hw)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -8,16 +8,14 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 SET(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-set(CLIENT_SOURCES
-    client.cpp
+set(HW_CLIENT_SOURCES
+    main.cpp
+    protocol.cpp
     )
 
-set(LOBBY_SOURCES
-    lobby.cpp
-    )
-
-set(SERVER_SOURCES
+set(HW_SERVER_SOURCES
     server.cpp
+    protocol.cpp
     )
 
 
@@ -28,22 +26,16 @@ if(MSVC)
   add_compile_definitions(NOVIRTUALKEYCODES NOWINMESSAGES NOWINSTYLES NOSYSMETRICS NOMENUS NOICONS NOKEYSTATES NOSYSCOMMANDS NORASTEROPS NOSHOWWINDOW OEMRESOURCE NOATOM NOCLIPBOARD NOCOLOR NOCTLMGR NODRAWTEXT NOGDI NOKERNEL NOUSER NOMB NOMEMMGR NOMETAFILE NOMINMAX NOMSG NOOPENFILE NOSCROLL NOSERVICE NOSOUND NOTEXTMETRIC NOWH NOWINOFFSETS NOCOMM NOKANJI NOHELP NOPROFILER NODEFERWINDOWPOS NOMCX)
 endif()
 
-add_executable(client ${CLIENT_SOURCES})
-target_link_libraries(client PUBLIC project_options project_warnings)
-target_link_libraries(client PUBLIC raylib enet)
+add_executable(hw_client ${HW_CLIENT_SOURCES})
+target_link_libraries(hw_client PUBLIC project_options project_warnings)
+target_link_libraries(hw_client PUBLIC raylib enet)
 
-add_executable(lobby ${LOBBY_SOURCES})
-target_link_libraries(lobby PUBLIC project_options project_warnings)
-target_link_libraries(lobby PUBLIC enet)
-
-add_executable(server ${SERVER_SOURCES})
-target_link_libraries(server PUBLIC project_options project_warnings)
-target_link_libraries(server PUBLIC enet)
+add_executable(hw_server ${HW_SERVER_SOURCES})
+target_link_libraries(hw_server PUBLIC project_options project_warnings)
+target_link_libraries(hw_server PUBLIC enet)
 
 if(MSVC)
-  target_link_libraries(client PUBLIC ws2_32.lib winmm.lib)
-  target_link_libraries(lobby PUBLIC ws2_32.lib winmm.lib)
-  target_link_libraries(server PUBLIC ws2_32.lib winmm.lib)
+  target_link_libraries(hw_client PUBLIC ws2_32.lib winmm.lib)
+  target_link_libraries(hw_server PUBLIC ws2_32.lib winmm.lib)
 endif()
-
 

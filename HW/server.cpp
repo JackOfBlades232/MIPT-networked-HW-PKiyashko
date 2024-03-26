@@ -1,118 +1,60 @@
-#include "utils.h"
-#include "common.h"
+#include "entity.h"
+#include "protocol.h"
+
 #include <enet/enet.h>
+
 #include <cstdlib>
-#include <ctime>
+#include <iostream>
+#include <vector>
 #include <map>
-#include <string>
 
-static const char *egyptian_names[32] =
-{
- "Mohamed",
- "Youssef",
- "Ahmed",
- "Mahmoud",
- "Mustafa",
- "Yassin",
- "Taha",
- "Khaled",
- "Hamza",
- "Bilal",
- "Ibrahim",
- "Hassan",
- "Hussein",
- "Karim",
- "Tareq",
- "Abdel-Rahman",
- "Ali",
- "Omar",
- "Halim",
- "Murad",
- "Selim",
- "Abdallah"
- "Peter",
- "Pierre",
- "George",
- "John",
- "Mina",
- "Beshoi",
- "Kirollos",
- "Mark",
- "Fadi",
- "Habib"
-};
+static std::vector<entity_t> entities;
+static std::map<uint16_t, ENetPeer *> controlled_map;
 
-static uint64_t hash_client_id(size_t client_index, uint64_t offset)
+void on_join(ENetPacket *packet, ENetPeer *peer, ENetHost *host)
 {
-    return (uint64_t)client_index * 0x123211123 + offset; // mult odd => creates a 1to1 map of Z/2^64 Z
+    // send all entities
+    for (const entity_t &ent : entities)
+        send_new_entity(peer, ent);
+
+    // find max eid
+    uint16_t maxEid = entities.empty() ? c_invalid_entity : entities[0].eid;
+    for (const entity_t &e : entities)
+        maxEid = std::max(maxEid, e.eid);
+    uint16_t newEid = maxEid + 1;
+    uint32_t color = 0xff000000 +
+                     0x00440000 * (rand() % 5) +
+                     0x00004400 * (rand() % 5) +
+                     0x00000044 * (rand() % 5);
+    float x = (rand() % 4) * 200.f;
+    float y = (rand() % 4) * 200.f;
+    entity_t ent = {color, x, y, newEid};
+    entities.push_back(ent);
+
+    controlled_map[newEid] = peer;
+
+    // send info about new entity to everyone
+    for (size_t i = 0; i < host->peerCount; ++i)
+        send_new_entity(&host->peers[i], ent);
+    // send info about controlled entity
+    send_set_controlled_entity(peer, newEid);
 }
 
-static const char *get_client_name(uint64_t client_hash)
+void on_state(ENetPacket *packet)
 {
-    return egyptian_names[client_hash % ARR_LEN(egyptian_names)];
-}
-
-// @NOTE: this could be factored out in some sane way
-#define BEGIN_PEER_LOOP(_host, _peer_name, _this_peer)      \
-    size_t _processed_peers = 0;                            \
-    for (size_t i = 0; i < _host.peerCount; ++i) {          \
-        ENetPeer *_peer_name = &_host.peers[i];             \
-        if (_peer_name->state != ENET_PEER_STATE_CONNECTED) \
-            continue;                                       \
-        if (_peer_name != _this_peer) {
-
-#define END_PEER_LOOP(_host)                            \
-        }                                               \
-        if (++_processed_peers >= _host.connectedPeers) \
-            break;                                      \
+    uint16_t eid = c_invalid_entity;
+    float x = 0.f; float y = 0.f;
+    deserialize_entity_state(packet, eid, x, y);
+    for (entity_t &e : entities) {
+        if (e.eid == eid) {
+            e.x = x;
+            e.y = y;
+        }
     }
-
-static void send_new_player_packet(ENetHost &host, const player_t &new_player, const ENetPeer *new_peer)
-{
-    MAKE_SPRINTF_BUF(buf, buf_len, 64, "newplayer:%llu:%s", new_player.hash, new_player.name.c_str());
-    BEGIN_PEER_LOOP(host, peer, new_peer)
-        send_packet(peer, buf, buf_len, true, true);
-    END_PEER_LOOP(host)
-}
-
-static void send_all_players_packet(ENetPeer *peer,
-                                    ENetHost &host, const std::map<ENetPeer *, player_t> &players)
-{
-    std::string msg("playerlist");
-    BEGIN_PEER_LOOP(host, other_peer, peer)
-        const player_t &other_player = players.at(other_peer);
-        MAKE_SPRINTF_BUF(buf, buf_len, 64, ":%llu:%s", other_player.hash, other_player.name.c_str());
-        msg += std::string(buf, buf_len-1);
-    END_PEER_LOOP(host)
-
-    send_packet(peer, (void *)msg.c_str(), msg.length()+1, true, false);
-}
-
-static void send_all_pings_packet(ENetPeer *peer,
-                                  ENetHost &host, const std::map<ENetPeer *, player_t> &players)
-{
-    std::string msg("pings");
-    BEGIN_PEER_LOOP(host, other_peer, peer)
-        const player_t &other_player = players.at(other_peer);
-        MAKE_SPRINTF_BUF(buf, buf_len, 64, ":%s:%u", other_player.name.c_str(), other_peer->lastRoundTripTime);
-        msg += std::string(buf, buf_len-1);
-    END_PEER_LOOP(host)
-
-    send_packet(peer, (void *)msg.c_str(), msg.length()+1, false, false);
-}
-
-static void send_pings_to_all_players(ENetHost &host, const std::map<ENetPeer *, player_t> &players)
-{
-    BEGIN_PEER_LOOP(host, peer, nullptr)
-        send_all_pings_packet(peer, host, players);
-    END_PEER_LOOP(host)
 }
 
 int main(int argc, const char **argv)
 {
-    srand(time(nullptr));
-    const uint64_t hash_offset = rand();
-    
     if (enet_initialize() != 0) {
         printf("Cannot init ENet");
         return 1;
@@ -120,52 +62,45 @@ int main(int argc, const char **argv)
     ENetAddress address;
 
     address.host = ENET_HOST_ANY;
-    address.port = 4221;
+    address.port = 10131;
 
     ENetHost *server = enet_host_create(&address, 32, 2, 0, 0);
+
     if (!server) {
         printf("Cannot create ENet server\n");
         return 1;
     }
 
-    std::map<ENetPeer *, player_t> players;
-    size_t player_counter = 0;
-
-    uint32_t time_start = enet_time_get();
-    uint32_t last_pings_sent_time = time_start;
-    while (true) {
+    for (;;) {
         ENetEvent event;
-        while (enet_host_service(server, &event, 10) > 0) {
+        while (enet_host_service(server, &event, 0) > 0) {
             switch (event.type) {
             case ENET_EVENT_TYPE_CONNECT:
-            { 
                 printf("Connection with %x:%u established\n", event.peer->address.host, event.peer->address.port);
-                uint64_t hash = hash_client_id(player_counter++, hash_offset);
-                player_t new_player{hash, std::string(get_client_name(hash))};
-                players.emplace(event.peer, new_player);
-                send_new_player_packet(*server, new_player, event.peer);
-                send_all_players_packet(event.peer, *server, players);
-            } break;
+                break;
             case ENET_EVENT_TYPE_RECEIVE:
-            {
-                const player_t &player_data = players.at(event.peer);
-                printf("Packet received from #%llu(%s) '%s'\n", player_data.hash, player_data.name.c_str(), event.packet->data);
+                switch (get_packet_type(event.packet)) {
+                case e_client_to_server_join:
+                    on_join(event.packet, event.peer, server);
+                    break;
+                case e_client_to_server_state:
+                    on_state(event.packet);
+                    break;
+                };
                 enet_packet_destroy(event.packet);
-            } break;
-            case ENET_EVENT_TYPE_DISCONNECT:
-                printf("Peer %x:%u disconnected\n", event.peer->address.host, event.peer->address.port);
-                players.erase(event.peer);
                 break;
             default:
                 break;
             };
         }
-
-        uint32_t cur_time = enet_time_get();
-        if (cur_time - last_pings_sent_time > 250) {
-            send_pings_to_all_players(*server, players);
-            last_pings_sent_time = cur_time;
-        }
+        static int t = 0;
+        for (const entity_t &e : entities)
+            for (size_t i = 0; i < server->peerCount; ++i) {
+                ENetPeer *peer = &server->peers[i];
+                if (controlled_map[e.eid] != peer)
+                    send_snapshot(peer, e.eid, e.x, e.y);
+            }
+        //usleep(400000);
     }
 
     enet_host_destroy(server);
@@ -173,4 +108,5 @@ int main(int argc, const char **argv)
     atexit(enet_deinitialize);
     return 0;
 }
+
 
