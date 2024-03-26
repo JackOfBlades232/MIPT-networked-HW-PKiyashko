@@ -15,6 +15,9 @@ static Bitstream create_packet_reader_bs(ENetPacket *packet)
 
 void send_join(ENetPeer *peer)
 {
+    if (peer->state != ENET_PEER_STATE_CONNECTED)
+        return;
+
     ENetPacket *packet = enet_packet_create(nullptr, sizeof(message_type_t), ENET_PACKET_FLAG_RELIABLE);
     *packet->data = e_client_to_server_join;
 
@@ -23,6 +26,9 @@ void send_join(ENetPeer *peer)
 
 void send_new_entity(ENetPeer *peer, const entity_t &ent)
 {
+    if (peer->state != ENET_PEER_STATE_CONNECTED)
+        return;
+
     ENetPacket *packet = enet_packet_create(nullptr, sizeof(message_type_t) + sizeof(ent), 
                                             ENET_PACKET_FLAG_RELIABLE);
     Bitstream bs = create_packet_writer_bs(packet);
@@ -34,6 +40,9 @@ void send_new_entity(ENetPeer *peer, const entity_t &ent)
 
 void send_set_controlled_entity(ENetPeer *peer, uint16_t eid)
 {
+    if (peer->state != ENET_PEER_STATE_CONNECTED)
+        return;
+
     ENetPacket *packet = enet_packet_create(nullptr, sizeof(message_type_t) + sizeof(eid), 
                                             ENET_PACKET_FLAG_RELIABLE);
     Bitstream bs = create_packet_writer_bs(packet);
@@ -45,6 +54,9 @@ void send_set_controlled_entity(ENetPeer *peer, uint16_t eid)
 
 void send_entity_state(ENetPeer *peer, uint16_t eid, float x, float y)
 {
+    if (peer->state != ENET_PEER_STATE_CONNECTED)
+        return;
+
     ENetPacket *packet = enet_packet_create(nullptr, 
                                             sizeof(message_type_t) + sizeof(eid) + sizeof(x) + sizeof(y),
                                             ENET_PACKET_FLAG_UNSEQUENCED);
@@ -59,6 +71,9 @@ void send_entity_state(ENetPeer *peer, uint16_t eid, float x, float y)
 
 void send_snapshot(ENetPeer *peer, uint16_t eid, float x, float y)
 {
+    if (peer->state != ENET_PEER_STATE_CONNECTED)
+        return;
+
     ENetPacket *packet = enet_packet_create(nullptr,
                                             sizeof(message_type_t) + sizeof(eid) + sizeof(x) + sizeof(y),
                                             ENET_PACKET_FLAG_UNSEQUENCED);

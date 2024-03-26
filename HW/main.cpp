@@ -48,6 +48,7 @@ int main(int argc, const char **argv)
         printf("Cannot init ENet");
         return 1;
     }
+    atexit(enet_deinitialize);
 
     ENetHost *client = enet_host_create(nullptr, 1, 2, 0, 0);
     if (!client) {
@@ -108,6 +109,7 @@ int main(int argc, const char **argv)
                     on_snapshot(event.packet);
                     break;
                 };
+                enet_packet_destroy(event.packet);
                 break;
             default:
                 break;

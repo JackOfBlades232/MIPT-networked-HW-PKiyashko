@@ -18,26 +18,26 @@ void on_join(ENetPacket *packet, ENetPeer *peer, ENetHost *host)
         send_new_entity(peer, ent);
 
     // find max eid
-    uint16_t maxEid = entities.empty() ? c_invalid_entity : entities[0].eid;
+    uint16_t max_eid = entities.empty() ? c_invalid_entity : entities[0].eid;
     for (const entity_t &e : entities)
-        maxEid = std::max(maxEid, e.eid);
-    uint16_t newEid = maxEid + 1;
+        max_eid = std::max(max_eid, e.eid);
+    uint16_t new_eid = max_eid + 1;
     uint32_t color = 0xff000000 +
                      0x00440000 * (rand() % 5) +
                      0x00004400 * (rand() % 5) +
                      0x00000044 * (rand() % 5);
     float x = (rand() % 4) * 200.f;
     float y = (rand() % 4) * 200.f;
-    entity_t ent = {color, x, y, newEid};
+    entity_t ent = {color, x, y, new_eid};
     entities.push_back(ent);
 
-    controlled_map[newEid] = peer;
+    controlled_map[new_eid] = peer;
 
     // send info about new entity to everyone
     for (size_t i = 0; i < host->peerCount; ++i)
         send_new_entity(&host->peers[i], ent);
     // send info about controlled entity
-    send_set_controlled_entity(peer, newEid);
+    send_set_controlled_entity(peer, new_eid);
 }
 
 void on_state(ENetPacket *packet)
@@ -59,6 +59,8 @@ int main(int argc, const char **argv)
         printf("Cannot init ENet");
         return 1;
     }
+    atexit(enet_deinitialize);
+
     ENetAddress address;
 
     address.host = ENET_HOST_ANY;
@@ -93,19 +95,16 @@ int main(int argc, const char **argv)
                 break;
             };
         }
-        static int t = 0;
         for (const entity_t &e : entities)
             for (size_t i = 0; i < server->peerCount; ++i) {
                 ENetPeer *peer = &server->peers[i];
                 if (controlled_map[e.eid] != peer)
                     send_snapshot(peer, e.eid, e.x, e.y);
             }
-        //usleep(400000);
     }
 
     enet_host_destroy(server);
 
-    atexit(enet_deinitialize);
     return 0;
 }
 
