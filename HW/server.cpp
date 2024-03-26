@@ -1,5 +1,5 @@
-#include "entity.h"
-#include "protocol.h"
+#include "entity.hpp"
+#include "protocol.hpp"
 
 #include <enet/enet.h>
 

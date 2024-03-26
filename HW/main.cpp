@@ -1,6 +1,6 @@
 #define WIN32_LEAN_AND_MEAN
-#include "entity.h"
-#include "protocol.h"
+#include "entity.hpp"
+#include "protocol.hpp"
 
 #include "raylib.h"
 #include <enet/enet.h>
@@ -67,7 +67,7 @@ int main(int argc, const char **argv)
 
     int width = 700;
     int height = 700;
-    InitWindow(width, height, "w4 networked MIPT");
+    InitWindow(width, height, "HW2 networked MIPT");
 
     const int scr_width = GetMonitorWidth(0);
     const int scr_height = GetMonitorHeight(0);
