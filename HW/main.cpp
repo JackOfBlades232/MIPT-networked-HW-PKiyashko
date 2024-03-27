@@ -8,9 +8,11 @@
 #include <functional>
 #include <algorithm> // min/max
 #include <vector>
+#include <map>
 
 static std::vector<entity_t> entities;
 static uint16_t my_entity = c_invalid_entity;
+static std::map<uint16_t, uint16_t> score_map;
 
 void on_new_entity_packet(ENetPacket *packet)
 {
@@ -21,6 +23,7 @@ void on_new_entity_packet(ENetPacket *packet)
         if (e.eid == new_entity.eid)
             return; // don't need to do anything, we already have entity
     entities.push_back(new_entity);
+    score_map[new_entity.eid] = 0;
 }
 
 void on_set_controlled_entity(ENetPacket *packet)
@@ -35,10 +38,18 @@ void on_remove_entity(ENetPacket *packet)
     // TODO: Direct adressing, of course! @HUH(PKiyashko): what on earth is that about?
     for (auto it = entities.begin(); it != entities.end(); ++it) {
         if (it->eid == remove_eid) {
+            score_map.erase(it->eid);
             entities.erase(it);
             return;
         }
     }
+}
+
+void on_score_update(ENetPacket *packet)
+{
+    uint16_t eid, score;
+    deserialize_entity_score_update(packet, eid, score);
+    score_map[eid] = score;
 }
 
 void on_snapshot(ENetPacket *packet)
@@ -127,6 +138,9 @@ int main(int argc, const char **argv)
                 case e_server_to_client_remove_entity:
                     on_remove_entity(event.packet);
                     break;
+                case e_server_to_client_score_update:
+                    on_score_update(event.packet);
+                    break;
                 default:
                     break;
                 };
@@ -166,6 +180,20 @@ int main(int argc, const char **argv)
                     DrawCircle(e.x, e.y, e.rad, GetColor(e.color));
             }
             EndMode2D();
+            if (my_entity == c_invalid_entity)
+                DrawText("Score: ?", 20, 20, 20, WHITE);
+            else
+                DrawText(TextFormat("Score: %hu", score_map[my_entity]), 20, 20, 20, WHITE);
+            if (score_map.size() > 1) {
+                DrawText("Other players:", 20, 60, 20, WHITE);
+                int offset = 80;
+                for (const auto &pair : score_map) {
+                    if (pair.first != my_entity) {
+                        DrawText(TextFormat("#%hu: %hu", pair.first, pair.second), 20, offset, 20, WHITE);
+                        offset += 20;
+                    }
+                }
+            }
         }
         EndDrawing();
     }

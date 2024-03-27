@@ -10,15 +10,18 @@
 
 static std::vector<entity_t> entities;
 static std::map<ENetPeer *, uint16_t> controlled_map;
+static std::map<uint16_t, uint16_t> score_map;
 
 void on_join(ENetPeer *peer, ENetHost *host)
 {
     // send all entities
-    for (const entity_t &ent : entities)
+    for (const entity_t &ent : entities) {
         send_new_entity(peer, ent);
+        send_entity_score_update(peer, ent.eid, score_map[ent.eid]);
+    }
 
-    static uint16_t next_eid = c_invalid_entity+1;
-    uint16_t new_eid = next_eid++;
+    static uint16_t last_eid = c_invalid_entity;
+    uint16_t new_eid = ++last_eid;
     uint32_t color = 0xff000000 +
                      0x003F0000 * (rand() % 4 + 1) +
                      0x00003F00 * (rand() % 4 + 1) +
@@ -30,6 +33,7 @@ void on_join(ENetPeer *peer, ENetHost *host)
     entities.push_back(ent);
 
     controlled_map[peer] = new_eid;
+    score_map[new_eid] = 0;
 
     // send info about new entity to everyone
     for (size_t i = 0; i < host->peerCount; ++i)
@@ -147,7 +151,11 @@ int main(int argc, const char **argv)
                 float rr = bigger.rad + smaller.rad;
                 if (dx*dx + dy*dy <= rr*rr) {
                     bigger.rad += smaller.rad*0.5f;
+                    uint16_t &bigger_score = score_map[bigger.eid];
+                    bigger_score += 1 + score_map[smaller.eid]/2;
                     teleport_entity(smaller);
+                    for (size_t i = 0; i < server->peerCount; ++i)
+                        send_entity_score_update(&server->peers[i], bigger.eid, bigger_score);
                 }
             }
 
