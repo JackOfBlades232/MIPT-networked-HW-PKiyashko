@@ -17,11 +17,8 @@ void on_join(ENetPeer *peer, ENetHost *host)
     for (const entity_t &ent : entities)
         send_new_entity(peer, ent);
 
-    // find max eid
-    uint16_t max_eid = entities.empty() ? c_invalid_entity : entities[0].eid;
-    for (const entity_t &e : entities)
-        max_eid = std::max(max_eid, e.eid);
-    uint16_t new_eid = max_eid + 1;
+    static uint16_t next_eid = c_invalid_entity+1;
+    uint16_t new_eid = next_eid++;
     uint32_t color = 0xff000000 +
                      0x003F0000 * (rand() % 4 + 1) +
                      0x00003F00 * (rand() % 4 + 1) +
