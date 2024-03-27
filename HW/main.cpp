@@ -49,11 +49,10 @@ void on_snapshot(ENetPacket *packet)
     // TODO: Direct adressing, of course!
     for (entity_t &e : entities) {
         if (e.eid == eid) {
-            // @TODO(PKiyashko): if here client disagrees with server, do smth
-            if (e.eid != my_entity) {
-                e.x = x;
-                e.y = y;
-            }
+            // @TODO(PKiyashko): if here client disagrees with server, interpolate/extrapolate
+            e.x = x;
+            e.y = y;
+
             e.rad = rad;
         }
     }

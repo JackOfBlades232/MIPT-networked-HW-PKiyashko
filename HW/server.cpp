@@ -23,12 +23,12 @@ void on_join(ENetPeer *peer, ENetHost *host)
         max_eid = std::max(max_eid, e.eid);
     uint16_t new_eid = max_eid + 1;
     uint32_t color = 0xff000000 +
-                     0x00440000 * (rand() % 5) +
-                     0x00004400 * (rand() % 5) +
-                     0x00000044 * (rand() % 5);
+                     0x003F0000 * (rand() % 4 + 1) +
+                     0x00003F00 * (rand() % 4 + 1) +
+                     0x0000003F * (rand() % 4 + 1);
     float x = -300.f + (rand() % 31) * 20.f;
     float y = -300.f + (rand() % 31) * 20.f;
-    float rad = 10.f + (((float)rand() / RAND_MAX) - 0.5f) * 4.f;
+    float rad = 10.f + (rand() % 11 - 5) * 1.f;
     entity_t ent = {color, x, y, rad, new_eid};
     entities.push_back(ent);
 
@@ -64,6 +64,29 @@ void on_disconnect(ENetPeer *peer, ENetHost *host)
         if (other_peer != peer)
             send_remove_entity(other_peer, removed_eid);
     }
+}
+
+void teleport_entity(entity_t &ent)
+{
+    bool teleported = false;
+    int attempts_left = 20;
+    do {
+        ent.x = -300.f + (rand() % 31) * 20.f;
+        ent.y = -300.f + (rand() % 31) * 20.f;
+        teleported = true;
+
+        for (const entity_t &e : entities) {
+            if (e.eid != ent.eid) {
+                float dx = e.x - ent.x;
+                float dy = e.y - ent.y;
+                float rr = e.rad + ent.rad;
+                if (dx*dx + dy*dy <= rr*rr) {
+                    teleported = false;
+                    break;
+                }
+            }
+        }
+    } while (!teleported && --attempts_left > 0);
 }
 
 int main(int argc, const char **argv)
@@ -116,6 +139,20 @@ int main(int argc, const char **argv)
                 break;
             };
         }
+
+        // Logic step (collision resolve)
+       for (size_t i = 0; i < entities.size(); ++i)
+            for (size_t j = i+1; j < entities.size(); ++j) {
+                entity_t &bigger  = entities[i].rad >= entities[j].rad ? entities[i] : entities[j];
+                entity_t &smaller = &bigger == &entities[i] ? entities[j] : entities[i];
+                float dx = bigger.x - smaller.x;
+                float dy = bigger.y - smaller.y;
+                float rr = bigger.rad + smaller.rad;
+                if (dx*dx + dy*dy <= rr*rr) {
+                    bigger.rad += smaller.rad*0.5f;
+                    teleport_entity(smaller);
+                }
+            }
 
         for (const entity_t &e : entities)
             for (size_t i = 0; i < server->peerCount; ++i)
