@@ -160,7 +160,7 @@ int main(int argc, const char **argv)
 
         BeginDrawing();
         {
-            ClearBackground(DARKGRAY);
+            ClearBackground(BLACK);
             BeginMode2D(camera);
             {
                 for (const entity_t &e : entities)

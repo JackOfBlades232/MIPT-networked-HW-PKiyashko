@@ -26,8 +26,8 @@ void on_join(ENetPeer *peer, ENetHost *host)
                      0x00440000 * (rand() % 5) +
                      0x00004400 * (rand() % 5) +
                      0x00000044 * (rand() % 5);
-    float x = (rand() % 4) * 200.f;
-    float y = (rand() % 4) * 200.f;
+    float x = -300.f + (rand() % 31) * 20.f;
+    float y = -300.f + (rand() % 31) * 20.f;
     float rad = 10.f + (((float)rand() / RAND_MAX) - 0.5f) * 4.f;
     entity_t ent = {color, x, y, rad, new_eid};
     entities.push_back(ent);
@@ -68,6 +68,8 @@ void on_disconnect(ENetPeer *peer, ENetHost *host)
 
 int main(int argc, const char **argv)
 {
+    srand(time(nullptr));
+
     if (enet_initialize() != 0) {
         printf("Cannot init ENet");
         return 1;
