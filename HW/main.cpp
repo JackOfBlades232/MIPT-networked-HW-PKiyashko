@@ -28,6 +28,19 @@ void on_set_controlled_entity(ENetPacket *packet)
     deserialize_set_controlled_entity(packet, my_entity);
 }
 
+void on_remove_entity(ENetPacket *packet)
+{
+    uint16_t remove_eid;
+    deserialize_remove_entity(packet, remove_eid);
+    // TODO: Direct adressing, of course! @HUH(PKiyashko): what on earth is that about?
+    for (auto it = entities.begin(); it != entities.end(); ++it) {
+        if (it->eid == remove_eid) {
+            entities.erase(it);
+            return;
+        }
+    }
+}
+
 void on_snapshot(ENetPacket *packet)
 {
     uint16_t eid = c_invalid_entity;
@@ -112,9 +125,17 @@ int main(int argc, const char **argv)
                 case e_server_to_client_snapshot:
                     on_snapshot(event.packet);
                     break;
+                case e_server_to_client_remove_entity:
+                    on_remove_entity(event.packet);
+                    break;
+                default:
+                    break;
                 };
                 enet_packet_destroy(event.packet);
                 break;
+            case ENET_EVENT_TYPE_DISCONNECT:
+                printf("Disconnected from server!\n"); // @TODO(PKiyashko): more data?
+                goto deinit;
             default:
                 break;
             };
@@ -150,6 +171,7 @@ int main(int argc, const char **argv)
         EndDrawing();
     }
 
+deinit:
     CloseWindow();
 
     return 0;

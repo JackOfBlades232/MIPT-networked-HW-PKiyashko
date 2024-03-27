@@ -9,9 +9,9 @@
 #include <map>
 
 static std::vector<entity_t> entities;
-static std::map<uint16_t, ENetPeer *> controlled_map;
+static std::map<ENetPeer *, uint16_t> controlled_map;
 
-void on_join(ENetPacket *packet, ENetPeer *peer, ENetHost *host)
+void on_join(ENetPeer *peer, ENetHost *host)
 {
     // send all entities
     for (const entity_t &ent : entities)
@@ -32,7 +32,7 @@ void on_join(ENetPacket *packet, ENetPeer *peer, ENetHost *host)
     entity_t ent = {color, x, y, rad, new_eid};
     entities.push_back(ent);
 
-    controlled_map[new_eid] = peer;
+    controlled_map[peer] = new_eid;
 
     // send info about new entity to everyone
     for (size_t i = 0; i < host->peerCount; ++i)
@@ -51,6 +51,18 @@ void on_state(ENetPacket *packet)
             e.x = x;
             e.y = y;
         }
+    }
+}
+
+void on_disconnect(ENetPeer *peer, ENetHost *host)
+{
+    uint16_t removed_eid = controlled_map[peer];
+    // @SPEED(PKiyashko): if it is ever required, do a find and erase by iter
+    controlled_map.erase(peer); 
+    for (size_t i = 0; i < host->peerCount; ++i) {
+        ENetPeer *other_peer = &host->peers[i];
+        if (other_peer != peer)
+            send_remove_entity(other_peer, removed_eid);
     }
 }
 
@@ -84,18 +96,25 @@ int main(int argc, const char **argv)
             case ENET_EVENT_TYPE_RECEIVE:
                 switch (get_packet_type(event.packet)) {
                 case e_client_to_server_join:
-                    on_join(event.packet, event.peer, server);
+                    on_join(event.peer, server);
                     break;
                 case e_client_to_server_state:
                     on_state(event.packet);
                     break;
+                default:
+                    break;
                 };
                 enet_packet_destroy(event.packet);
+                break;
+            case ENET_EVENT_TYPE_DISCONNECT:
+                printf("Peer %x:%u disconnected\n", event.peer->address.host, event.peer->address.port);
+                on_disconnect(event.peer, server);
                 break;
             default:
                 break;
             };
         }
+
         for (const entity_t &e : entities)
             for (size_t i = 0; i < server->peerCount; ++i)
                 send_snapshot(&server->peers[i], e.eid, e.x, e.y, e.rad);

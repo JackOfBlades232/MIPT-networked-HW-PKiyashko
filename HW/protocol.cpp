@@ -52,6 +52,20 @@ void send_set_controlled_entity(ENetPeer *peer, uint16_t eid)
     enet_peer_send(peer, 0, packet);
 }
 
+void send_remove_entity(ENetPeer *peer, uint16_t eid)
+{
+    if (peer->state != ENET_PEER_STATE_CONNECTED)
+        return;
+
+    ENetPacket *packet = enet_packet_create(nullptr, sizeof(message_type_t) + sizeof(eid), 
+                                            ENET_PACKET_FLAG_RELIABLE);
+    Bitstream bs = create_packet_writer_bs(packet);
+    bs.Write(e_server_to_client_remove_entity);
+    bs.Write(eid);
+
+    enet_peer_send(peer, 0, packet);
+}
+
 void send_entity_state(ENetPeer *peer, uint16_t eid, float x, float y)
 {
     if (peer->state != ENET_PEER_STATE_CONNECTED)
@@ -102,6 +116,13 @@ void deserialize_new_entity(ENetPacket *packet, entity_t &ent)
 }
 
 void deserialize_set_controlled_entity(ENetPacket *packet, uint16_t &eid)
+{
+    Bitstream bs = create_packet_reader_bs(packet);
+    bs.Skip<message_type_t>();
+    bs.Read(eid);
+}
+
+void deserialize_remove_entity(ENetPacket *packet, uint16_t &eid)
 {
     Bitstream bs = create_packet_reader_bs(packet);
     bs.Skip<message_type_t>();
