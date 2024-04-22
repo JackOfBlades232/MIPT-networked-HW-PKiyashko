@@ -6,8 +6,8 @@
 class Bitstream {
 public:
     enum class Type {
-        reader,
-        writer
+        eReader,
+        eWriter
     };
 
 private:
@@ -25,7 +25,7 @@ public:
 
     template <class T>
     void Read(T &out_val) {
-        assert(m_type == Type::reader);
+        assert(m_type == Type::eReader);
         assert(m_mem_size >= sizeof(out_val));
         memcpy(&out_val, m_memory, sizeof(out_val));
         m_memory   += sizeof(out_val);
@@ -34,7 +34,7 @@ public:
 
     template <class T>
     void Write(const T &val) {
-        assert(m_type == Type::writer);
+        assert(m_type == Type::eWriter);
         assert(m_mem_size >= sizeof(val));
         memcpy(m_memory, &val, sizeof(val));
         m_memory   += sizeof(val);

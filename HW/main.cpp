@@ -1,205 +1,163 @@
-#define WIN32_LEAN_AND_MEAN
+// initial skeleton is a clone from https://github.com/jpcy/bgfx-minimal-example
+//
 #include "entity.hpp"
 #include "protocol.hpp"
 
 #include "raylib.h"
 #include <enet/enet.h>
 
-#include <functional>
-#include <algorithm> // min/max
+#include <cmath>
 #include <vector>
-#include <map>
+#include <functional>
+
 
 static std::vector<entity_t> entities;
 static uint16_t my_entity = c_invalid_entity;
-static std::map<uint16_t, uint16_t> score_map;
 
 void on_new_entity_packet(ENetPacket *packet)
 {
-    entity_t new_entity;
-    deserialize_new_entity(packet, new_entity);
-    // TODO: Direct adressing, of course!
-    for (const entity_t &e : entities)
-        if (e.eid == new_entity.eid)
-            return; // don't need to do anything, we already have entity
-    entities.push_back(new_entity);
-    score_map[new_entity.eid] = 0;
+  entity_t new_entity;
+  deserialize_new_entity(packet, new_entity);
+  // TODO: Direct adressing, of course!
+  for (const entity_t &e : entities)
+    if (e.eid == new_entity.eid)
+      return; // don't need to do anything, we already have entity
+  entities.push_back(new_entity);
 }
 
 void on_set_controlled_entity(ENetPacket *packet)
 {
-    deserialize_set_controlled_entity(packet, my_entity);
-}
-
-void on_remove_entity(ENetPacket *packet)
-{
-    uint16_t remove_eid;
-    deserialize_remove_entity(packet, remove_eid);
-    // TODO: Direct adressing, of course! @HUH(PKiyashko): what on earth is that about?
-    for (auto it = entities.begin(); it != entities.end(); ++it) {
-        if (it->eid == remove_eid) {
-            score_map.erase(it->eid);
-            entities.erase(it);
-            return;
-        }
-    }
-}
-
-void on_score_update(ENetPacket *packet)
-{
-    uint16_t eid, score;
-    deserialize_entity_score_update(packet, eid, score);
-    score_map[eid] = score;
+  deserialize_set_controlled_entity(packet, my_entity);
 }
 
 void on_snapshot(ENetPacket *packet)
 {
-    uint16_t eid = c_invalid_entity;
-    float x = 0.f; float y = 0.f; float rad = 0.f;
-    deserialize_snapshot(packet, eid, x, y, rad);
-    // TODO: Direct adressing, of course!
-    for (entity_t &e : entities) {
-        if (e.eid == eid) {
-            // @TODO(PKiyashko): if here client disagrees with server, interpolate/extrapolate
-            e.x = x;
-            e.y = y;
-
-            e.rad = rad;
-        }
+  uint16_t eid = invalid_entity;
+  float x = 0.f; float y = 0.f; float ori = 0.f;
+  deserialize_snapshot(packet, eid, x, y, ori);
+  // TODO: Direct adressing, of course!
+  for (entity_t &e : entities)
+    if (e.eid == eid)
+    {
+      e.x = x;
+      e.y = y;
+      e.ori = ori;
     }
 }
 
 int main(int argc, const char **argv)
 {
-    if (enet_initialize() != 0) {
-        printf("Cannot init ENet");
-        return 1;
-    }
-    atexit(enet_deinitialize);
+  if (enet_initialize() != 0)
+  {
+    printf("Cannot init ENet");
+    return 1;
+  }
 
-    ENetHost *client = enet_host_create(nullptr, 1, 2, 0, 0);
-    if (!client) {
-        printf("Cannot create ENet client\n");
-        return 1;
-    }
+  ENetHost *client = enet_host_create(nullptr, 1, 2, 0, 0);
+  if (!client)
+  {
+    printf("Cannot create ENet client\n");
+    return 1;
+  }
 
-    ENetAddress address;
-    enet_address_set_host(&address, "127.0.0.1");
-    address.port = 10131;
+  ENetAddress address;
+  enet_address_set_host(&address, "localhost");
+  address.port = 10131;
 
-    ENetPeer *server_peer = enet_host_connect(client, &address, 2, 0);
-    if (!server_peer) {
-        printf("Cannot connect to server");
-        return 1;
-    }
+  ENetPeer *serverPeer = enet_host_connect(client, &address, 2, 0);
+  if (!serverPeer)
+  {
+    printf("Cannot connect to server");
+    return 1;
+  }
 
-    int width = 700;
-    int height = 700;
-    InitWindow(width, height, "HW2 networked MIPT");
+  int width = 600;
+  int height = 600;
 
-    const int scr_width = GetMonitorWidth(0);
-    const int scr_height = GetMonitorHeight(0);
-    if (scr_width < width || scr_height < height) {
-        width = std::min(scr_width, width);
-        height = std::min(scr_height - 150, height);
-        SetWindowSize(width, height);
-    }
+  InitWindow(width, height, "w5 networked MIPT");
 
-    Camera2D camera = {{0, 0}, {0, 0}, 0.f, 1.f};
-    camera.target = Vector2{0.f, 0.f};
-    camera.offset = Vector2{width * 0.5f, height * 0.5f};
-    camera.rotation = 0.f;
-    camera.zoom = 1.f;
+  const int scrWidth = GetMonitorWidth(0);
+  const int scrHeight = GetMonitorHeight(0);
+  if (scrWidth < width || scrHeight < height)
+  {
+    width = std::min(scrWidth, width);
+    height = std::min(scrHeight - 150, height);
+    SetWindowSize(width, height);
+  }
 
-    SetTargetFPS(60);               // Set our game to run at 60 frames-per-second
+  Camera2D camera = { {0, 0}, {0, 0}, 0.f, 1.f };
+  camera.target = Vector2{ 0.f, 0.f };
+  camera.offset = Vector2{ width * 0.5f, height * 0.5f };
+  camera.rotation = 0.f;
+  camera.zoom = 10.f;
 
-    bool connected = false;
-    while (!WindowShouldClose()) {
-        float dt = GetFrameTime();
-        ENetEvent event;
-        while (enet_host_service(client, &event, 0) > 0) {
-            switch (event.type) {
-            case ENET_EVENT_TYPE_CONNECT:
-                printf("Connection with %x:%u established\n", event.peer->address.host, event.peer->address.port);
-                send_join(server_peer);
-                connected = true;
-                break;
-            case ENET_EVENT_TYPE_RECEIVE:
-                switch (get_packet_type(event.packet)) {
-                case e_server_to_client_new_entity:
-                    on_new_entity_packet(event.packet);
-                    break;
-                case e_server_to_client_set_controlled_entity:
-                    on_set_controlled_entity(event.packet);
-                    break;
-                case e_server_to_client_snapshot:
-                    on_snapshot(event.packet);
-                    break;
-                case e_server_to_client_remove_entity:
-                    on_remove_entity(event.packet);
-                    break;
-                case e_server_to_client_score_update:
-                    on_score_update(event.packet);
-                    break;
-                default:
-                    break;
-                };
-                enet_packet_destroy(event.packet);
-                break;
-            case ENET_EVENT_TYPE_DISCONNECT:
-                printf("Disconnected from server!\n"); // @TODO(PKiyashko): more data?
-                goto deinit;
-            default:
-                break;
-            };
-        }
-        if (my_entity != c_invalid_entity) {
-            bool left = IsKeyDown(KEY_LEFT);
-            bool right = IsKeyDown(KEY_RIGHT);
-            bool up = IsKeyDown(KEY_UP);
-            bool down = IsKeyDown(KEY_DOWN);
-            // TODO: Direct adressing, of course!
-            for (entity_t &e : entities) {
-                if (e.eid == my_entity) {
-                    // Update
-                    e.x += ((left ? -dt : 0.f) + (right ? +dt : 0.f)) * 100.f;
-                    e.y += ((up ? -dt : 0.f) + (down ? +dt : 0.f)) * 100.f;
 
-                    // Send
-                    send_entity_state(server_peer, my_entity, e.x, e.y);
-                }
-            }
-        }
+  SetTargetFPS(60);               // Set our game to run at 60 frames-per-second
 
-        BeginDrawing();
+  bool connected = false;
+  while (!WindowShouldClose())
+  {
+    float dt = GetFrameTime();
+    ENetEvent event;
+    while (enet_host_service(client, &event, 0) > 0)
+    {
+      switch (event.type)
+      {
+      case ENET_EVENT_TYPE_CONNECT:
+        printf("Connection with %x:%u established\n", event.peer->address.host, event.peer->address.port);
+        send_join(serverPeer);
+        connected = true;
+        break;
+      case ENET_EVENT_TYPE_RECEIVE:
+        switch (get_packet_type(event.packet))
         {
-            ClearBackground(BLACK);
-            BeginMode2D(camera);
-            {
-                for (const entity_t &e : entities)
-                    DrawCircle(e.x, e.y, e.rad, GetColor(e.color));
-            }
-            EndMode2D();
-            if (my_entity == c_invalid_entity)
-                DrawText("Score: ?", 20, 20, 20, WHITE);
-            else
-                DrawText(TextFormat("Score: %hu", score_map[my_entity]), 20, 20, 20, WHITE);
-            if (score_map.size() > 1) {
-                DrawText("Other players:", 20, 60, 20, WHITE);
-                int offset = 80;
-                for (const auto &pair : score_map) {
-                    if (pair.first != my_entity) {
-                        DrawText(TextFormat("#%hu: %hu", pair.first, pair.second), 20, offset, 20, WHITE);
-                        offset += 20;
-                    }
-                }
-            }
+        case E_SERVER_TO_CLIENT_NEW_ENTITY:
+          on_new_entity_packet(event.packet);
+          break;
+        case E_SERVER_TO_CLIENT_SET_CONTROLLED_ENTITY:
+          on_set_controlled_entity(event.packet);
+          break;
+        case E_SERVER_TO_CLIENT_SNAPSHOT:
+          on_snapshot(event.packet);
+          break;
+        };
+        break;
+      default:
+        break;
+      };
+    }
+    if (my_entity != invalid_entity)
+    {
+      bool left = IsKeyDown(KEY_LEFT);
+      bool right = IsKeyDown(KEY_RIGHT);
+      bool up = IsKeyDown(KEY_UP);
+      bool down = IsKeyDown(KEY_DOWN);
+      // TODO: Direct adressing, of course!
+      for (entity_t &e : entities)
+        if (e.eid == my_entity)
+        {
+          // Update
+          float thr = (up ? 1.f : 0.f) + (down ? -1.f : 0.f);
+          float steer = (left ? -1.f : 0.f) + (right ? 1.f : 0.f);
+
+          // Send
+          send_entity_input(serverPeer, my_entity, thr, steer);
         }
-        EndDrawing();
     }
 
-deinit:
-    CloseWindow();
+    BeginDrawing();
+      ClearBackground(GRAY);
+      BeginMode2D(camera);
+        for (const entity_t &e : entities)
+        {
+          const Rectangle rect = {e.x, e.y, 3.f, 1.f};
+          DrawRectanglePro(rect, {0.f, 0.5f}, e.ori * 180.f / PI, GetColor(e.color));
+        }
 
-    return 0;
+      EndMode2D();
+    EndDrawing();
+  }
+
+  CloseWindow();
+  return 0;
 }

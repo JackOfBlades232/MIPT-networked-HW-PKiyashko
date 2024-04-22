@@ -1,16 +1,14 @@
 #include "protocol.hpp"
 #include "bitstream.hpp"
 
-#include <utility>
-
 static Bitstream create_packet_writer_bs(ENetPacket *packet)
 {
-    return Bitstream(packet->data, packet->dataLength, Bitstream::Type::writer);
+    return Bitstream(packet->data, packet->dataLength, Bitstream::Type::eWriter);
 }
 
 static Bitstream create_packet_reader_bs(ENetPacket *packet)
 {
-    return Bitstream(packet->data, packet->dataLength, Bitstream::Type::reader);
+    return Bitstream(packet->data, packet->dataLength, Bitstream::Type::eReader);
 }
 
 void send_join(ENetPeer *peer)
@@ -66,47 +64,31 @@ void send_remove_entity(ENetPeer *peer, uint16_t eid)
     enet_peer_send(peer, 0, packet);
 }
 
-void send_entity_score_update(ENetPeer *peer, uint16_t eid, uint16_t score)
+void send_entity_input(ENetPeer *peer, uint16_t eid, float thr, float steer)
 {
     if (peer->state != ENET_PEER_STATE_CONNECTED)
         return;
 
     ENetPacket *packet = enet_packet_create(nullptr, 
-                                            sizeof(message_type_t) + sizeof(eid) + sizeof(score),
+                                            sizeof(message_type_t) + sizeof(eid) + sizeof(thr) + sizeof(steer),
                                             ENET_PACKET_FLAG_RELIABLE);
     Bitstream bs = create_packet_writer_bs(packet);
-    bs.Write(e_server_to_client_score_update);
+    bs.Write(e_client_to_server_input);
     bs.Write(eid);
-    bs.Write(score);
+    bs.Write(thr);
+    bs.Write(steer);
 
     enet_peer_send(peer, 1, packet);
 }
 
-void send_entity_state(ENetPeer *peer, uint16_t eid, float x, float y)
-{
-    if (peer->state != ENET_PEER_STATE_CONNECTED)
-        return;
-
-    ENetPacket *packet = enet_packet_create(nullptr, 
-                                            sizeof(message_type_t) + sizeof(eid) + sizeof(x) + sizeof(y),
-                                            ENET_PACKET_FLAG_UNSEQUENCED);
-    Bitstream bs = create_packet_writer_bs(packet);
-    bs.Write(e_client_to_server_state);
-    bs.Write(eid);
-    bs.Write(x);
-    bs.Write(y);
-
-    enet_peer_send(peer, 1, packet);
-}
-
-void send_snapshot(ENetPeer *peer, uint16_t eid, float x, float y, float rad)
+void send_snapshot(ENetPeer *peer, uint16_t eid, float x, float y, float ori)
 {
     if (peer->state != ENET_PEER_STATE_CONNECTED)
         return;
 
     ENetPacket *packet = enet_packet_create(nullptr,
                                             sizeof(message_type_t) + sizeof(eid) +
-                                            sizeof(x) + sizeof(y) + sizeof(rad),
+                                            sizeof(x) + sizeof(y) + sizeof(ori),
                                             ENET_PACKET_FLAG_UNSEQUENCED);
 
     Bitstream bs = create_packet_writer_bs(packet);
@@ -114,7 +96,7 @@ void send_snapshot(ENetPeer *peer, uint16_t eid, float x, float y, float rad)
     bs.Write(eid);
     bs.Write(x);
     bs.Write(y);
-    bs.Write(rad);
+    bs.Write(ori);
 
     enet_peer_send(peer, 1, packet);
 }
@@ -145,30 +127,22 @@ void deserialize_remove_entity(ENetPacket *packet, uint16_t &eid)
     bs.Read(eid);
 }
 
-void deserialize_entity_score_update(ENetPacket *packet, uint16_t &eid, uint16_t &score)
+void deserialize_entity_input(ENetPacket *packet, uint16_t &eid, float &thr, float &steer)
 {
     Bitstream bs = create_packet_reader_bs(packet);
     bs.Skip<message_type_t>();
     bs.Read(eid);
-    bs.Read(score);
+    bs.Read(thr);
+    bs.Read(steer);
 }
 
-void deserialize_entity_state(ENetPacket *packet, uint16_t &eid, float &x, float &y)
+void deserialize_snapshot(ENetPacket *packet, uint16_t &eid, float &x, float &y, float &ori)
 {
     Bitstream bs = create_packet_reader_bs(packet);
     bs.Skip<message_type_t>();
     bs.Read(eid);
     bs.Read(x);
     bs.Read(y);
-}
-
-void deserialize_snapshot(ENetPacket *packet, uint16_t &eid, float &x, float &y, float &rad)
-{
-    Bitstream bs = create_packet_reader_bs(packet);
-    bs.Skip<message_type_t>();
-    bs.Read(eid);
-    bs.Read(x);
-    bs.Read(y);
-    bs.Read(rad);
+    bs.Read(ori);
 }
 
