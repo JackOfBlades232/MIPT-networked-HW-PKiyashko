@@ -68,13 +68,11 @@ void on_disconnect(ENetPeer *peer, ENetHost *host)
 
     for (size_t i = 0; i < host->peerCount; ++i) {
         ENetPeer *other_peer = &host->peers[i];
-        if (other_peer->state != ENET_PEER_STATE_CONNECTED ||
-            other_peer == peer)
+        if (other_peer->state == ENET_PEER_STATE_CONNECTED &&
+            other_peer != peer) 
         {
-            continue;
+            send_remove_entity(other_peer, eid);
         }
-
-        send_remove_entity(other_peer, eid);
     }
 }
 
@@ -133,7 +131,6 @@ int main(int argc, const char **argv)
                     on_join(event.packet, event.peer, server);
                     break;
                 case e_client_to_server_disconnect:
-                    printf("DEBUG: recv disconnect\n");
                     on_disconnect(event.peer, server);
                     break;
                 case e_client_to_server_input:
@@ -155,15 +152,12 @@ int main(int argc, const char **argv)
             // send
             for (size_t i = 0; i < server->peerCount; ++i) {
                 ENetPeer *peer = &server->peers[i];
-                if (peer->state != ENET_PEER_STATE_CONNECTED ||
-                    controlled_map[e.eid] == peer)
+                if (peer->state == ENET_PEER_STATE_CONNECTED)
                 {
-                    continue;
+                    // skip this here in this implementation
+                    // if (controlledMap[e.eid] != peer)
+                    send_snapshot(peer, e.eid, e.x, e.y, e.ori);
                 }
-
-                // skip this here in this implementation
-                // if (controlledMap[e.eid] != peer)
-                send_snapshot(peer, e.eid, e.x, e.y, e.ori);
             }
         }
         usleep(100000);
