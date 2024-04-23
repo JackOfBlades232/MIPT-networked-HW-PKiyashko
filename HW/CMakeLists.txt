@@ -11,6 +11,7 @@ SET(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(HW_CLIENT_SOURCES
     main.cpp
     protocol.cpp
+    entity.cpp
     )
 
 set(HW_SERVER_SOURCES

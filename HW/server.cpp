@@ -156,7 +156,8 @@ int main(int argc, const char **argv)
                 {
                     // skip this here in this implementation
                     // if (controlledMap[e.eid] != peer)
-                    send_snapshot(peer, cur_time, e.eid, e.x, e.y, e.ori);
+                    send_snapshot(
+                        peer, cur_time, e.eid, e.x, e.y, e.ori, e.thr, e.speed);
                 }
             }
         }

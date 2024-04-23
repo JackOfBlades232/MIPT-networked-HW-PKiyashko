@@ -26,6 +26,10 @@ struct entity_snapshot_t {
 
 struct entity_state_t {
     entity_t ent;
+    struct {
+        uint32_t ts;
+        bool initialized = false;
+    } sim;
     std::deque<entity_snapshot_t> history;
 };
 
@@ -65,6 +69,60 @@ HistoryIterator bin_seach_in_history(entity_state_t &ent_state, uint32_t ts)
     return hi;
 }
 
+void interpolate_entity(entity_state_t &ent_state, uint32_t ts)
+{
+    printf("inter\n");
+
+    ent_state.sim.initialized = false;
+
+    HistoryIterator it = bin_seach_in_history(ent_state, ts);
+
+    if (it == ent_state.history.begin()) {
+        ent_state.ent.x = it->x;
+        ent_state.ent.y = it->y;
+        ent_state.ent.ori = it->ori;
+    } else if (it != ent_state.history.end()) {
+        HistoryIterator prev = it-1;
+        float coeff = (float)(it->ts - ts) / (it->ts - prev->ts);
+        ent_state.ent.x = coeff*prev->x + (1.f - coeff)*it->x;
+        ent_state.ent.y = coeff*prev->y + (1.f - coeff)*it->y;
+        ent_state.ent.ori = coeff*prev->ori + (1.f - coeff)*it->ori;
+
+        ent_state.history.erase(ent_state.history.begin(), prev);
+    }
+}
+
+void extrapolate_entity(entity_state_t &ent_state, uint32_t ts)
+{
+    printf("extra\n");
+
+    if (!ent_state.sim.initialized) {
+        if (ent_state.history.empty())
+            return;
+
+        ent_state.sim.ts  = ent_state.history.back().ts;
+        ent_state.ent.x   = ent_state.history.back().x;
+        ent_state.ent.y   = ent_state.history.back().y;
+        ent_state.ent.ori = ent_state.history.back().ori;
+
+        ent_state.sim.initialized = true;
+    }
+
+    simulate_entity(ent_state.ent, (float)(ts - ent_state.sim.ts) * 1e-3);
+    ent_state.sim.ts = ts;
+}
+
+void simulate_entity(entity_state_t &ent_state, uint32_t ts)
+{
+    if (ent_state.history.empty())
+        return;
+
+    if (ts <= ent_state.history.back().ts)
+        interpolate_entity(ent_state, ts);
+    else
+        extrapolate_entity(ent_state, ts);
+}
+
 void on_new_entity_packet(ENetPacket *packet)
 {
     entity_t new_entity;
@@ -88,12 +146,19 @@ uint32_t on_snapshot(ENetPacket *packet) // returns server timestamp
     float x      = 0.f;
     float y      = 0.f;
     float ori    = 0.f;
-    deserialize_snapshot(packet, ts, eid, x, y, ori);
+    float thr    = 0.f;
+    float speed  = 0.f;
+    deserialize_snapshot(packet, ts, eid, x, y, ori, thr, speed);
 
     // TODO: Direct adressing, of course!
     for (entity_state_t &e : entities)
-        if (e.ent.eid == eid)
+        if (e.ent.eid == eid) {
             e.history.push_back(entity_snapshot_t{ts, x, y, ori});
+            if (eid != my_entity) {
+                e.ent.thr   = thr;
+                e.ent.speed = speed;
+            }
+        }
 
     return ts;
 }
@@ -164,9 +229,10 @@ int main(int argc, const char **argv)
     SetTargetFPS(60); // Set our game to run at 60 frames-per-second
 
     // collected from the first stapshot. For interpolation, we
-    // introduce and additional lag equal to 200ms.
+    // introduce and additional lag equal to 40ms. This is not enough
+    // to always interpolate, and too much to always extrapolate.
     // @TODO(PKiyashko): make this flexible w/ respect to RTT
-    uint32_t dt_from_server = 200;
+    uint32_t dt_from_server = 40;
     bool dt_initialized = false;
     while (!WindowShouldClose()) {
         uint32_t local_ts = (uint32_t)(GetTime() * 1000.0);
@@ -215,32 +281,18 @@ int main(int argc, const char **argv)
             bool down  = IsKeyDown(KEY_DOWN);
             // TODO: Direct adressing, of course!
             for (entity_state_t &e : entities) {
-                // Interpolate
-                HistoryIterator it = bin_seach_in_history(e, ts);
-                printf("%lu\n", e.history.size());
-                if (it == e.history.begin()) {
-                    e.ent.x = it->x;
-                    e.ent.y = it->y;
-                    e.ent.ori = it->ori;
-                } else if (it != e.history.end()) {
-                    HistoryIterator prev = it-1;
-                    float coeff = (float)(it->ts - ts) / (it->ts - prev->ts);
-                    e.ent.x = coeff*prev->x + (1.f - coeff)*it->x;
-                    e.ent.y = coeff*prev->y + (1.f - coeff)*it->y;
-                    e.ent.ori = coeff*prev->ori + (1.f - coeff)*it->ori;
-
-                    e.history.erase(e.history.begin(), prev);
-                }
-
                 // Send controls
                 if (e.ent.eid == my_entity) {
                     // Update
-                    float thr   = (up ? 1.f : 0.f) + (down ? -1.f : 0.f);
-                    float steer = (left ? -1.f : 0.f) + (right ? 1.f : 0.f);
+                    e.ent.thr   = (up ? 1.f : 0.f) + (down ? -1.f : 0.f);
+                    e.ent.steer = (left ? -1.f : 0.f) + (right ? 1.f : 0.f);
 
                     // Send
-                    send_entity_input(server_peer, my_entity, thr, steer);
+                    send_entity_input(server_peer, my_entity, e.ent.thr, e.ent.steer);
                 }
+
+                // Interpolate/Extrapolate
+                simulate_entity(e, ts);
             }
         }
 
