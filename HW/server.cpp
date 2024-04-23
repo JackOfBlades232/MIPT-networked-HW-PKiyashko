@@ -1,39 +1,42 @@
 #include "entity.hpp"
 #include "protocol.hpp"
 
+#include <cassert>
 #include <enet/enet.h>
 
+#include <cstdio>
 #include <cstdlib>
-#include <iostream>
-#include <vector>
 #include <map>
+#include <vector>
 
 static std::vector<entity_t> entities;
-static std::map<ENetPeer *, uint16_t> controlled_map;
-static std::map<uint16_t, uint16_t> score_map;
+static std::map<uint16_t, ENetPeer *> controlled_map;
 
-void on_join(ENetPeer *peer, ENetHost *host)
+void on_join(ENetPacket *packet, ENetPeer *peer, ENetHost *host)
 {
     // send all entities
-    for (const entity_t &ent : entities) {
+    for (const entity_t &ent : entities)
         send_new_entity(peer, ent);
-        send_entity_score_update(peer, ent.eid, score_map[ent.eid]);
-    }
 
-    static uint16_t last_eid = c_invalid_entity;
-    uint16_t new_eid = ++last_eid;
-    uint32_t color = 0xff000000 +
-                     0x003F0000 * (rand() % 4 + 1) +
-                     0x00003F00 * (rand() % 4 + 1) +
-                     0x0000003F * (rand() % 4 + 1);
-    float x = -300.f + (rand() % 31) * 20.f;
-    float y = -300.f + (rand() % 31) * 20.f;
-    float rad = 10.f + (rand() % 11 - 5) * 1.f;
-    entity_t ent = {color, x, y, rad, new_eid};
+    // find max eid
+    uint16_t max_eid = entities.empty() ? c_invalid_entity : entities[0].eid;
+    for (const entity_t &e : entities)
+        max_eid = std::max(max_eid, e.eid);
+    uint16_t new_eid = max_eid + 1;
+    uint32_t color   = 0xff000000 + 0x00440000 * (rand() % 5) +
+                       0x00004400 * (rand() % 5) + 0x00000044 * (rand() % 5);
+    float x = (rand() % 4) * 5.f;
+    float y = (rand() % 4) * 5.f;
+
+    entity_t ent = {
+        color, x, y, 0.f, 
+        (rand() / RAND_MAX) * 3.141592654f, 
+        0.f, 0.f, 
+        new_eid
+    };
     entities.push_back(ent);
 
-    controlled_map[peer] = new_eid;
-    score_map[new_eid] = 0;
+    controlled_map[new_eid] = peer;
 
     // send info about new entity to everyone
     for (size_t i = 0; i < host->peerCount; ++i)
@@ -42,58 +45,21 @@ void on_join(ENetPeer *peer, ENetHost *host)
     send_set_controlled_entity(peer, new_eid);
 }
 
-void on_state(ENetPacket *packet)
+void on_input(ENetPacket *packet)
 {
     uint16_t eid = c_invalid_entity;
-    float x = 0.f; float y = 0.f;
-    deserialize_entity_state(packet, eid, x, y);
-    for (entity_t &e : entities) {
+    float thr    = 0.f;
+    float steer  = 0.f;
+    deserialize_entity_input(packet, eid, thr, steer);
+    for (entity_t &e : entities)
         if (e.eid == eid) {
-            e.x = x;
-            e.y = y;
+            e.thr   = thr;
+            e.steer = steer;
         }
-    }
-}
-
-void on_disconnect(ENetPeer *peer, ENetHost *host)
-{
-    uint16_t removed_eid = controlled_map[peer];
-    // @SPEED(PKiyashko): if it is ever required, do a find and erase by iter
-    controlled_map.erase(peer); 
-    for (size_t i = 0; i < host->peerCount; ++i) {
-        ENetPeer *other_peer = &host->peers[i];
-        if (other_peer != peer)
-            send_remove_entity(other_peer, removed_eid);
-    }
-}
-
-void teleport_entity(entity_t &ent)
-{
-    bool teleported = false;
-    int attempts_left = 20;
-    do {
-        ent.x = -300.f + (rand() % 31) * 20.f;
-        ent.y = -300.f + (rand() % 31) * 20.f;
-        teleported = true;
-
-        for (const entity_t &e : entities) {
-            if (e.eid != ent.eid) {
-                float dx = e.x - ent.x;
-                float dy = e.y - ent.y;
-                float rr = e.rad + ent.rad;
-                if (dx*dx + dy*dy <= rr*rr) {
-                    teleported = false;
-                    break;
-                }
-            }
-        }
-    } while (!teleported && --attempts_left > 0);
 }
 
 int main(int argc, const char **argv)
 {
-    srand(time(nullptr));
-
     if (enet_initialize() != 0) {
         printf("Cannot init ENet");
         return 1;
@@ -112,61 +78,51 @@ int main(int argc, const char **argv)
         return 1;
     }
 
-    for (;;) {
+    uint32_t lastTime = enet_time_get();
+    while (true) {
+        uint32_t curTime = enet_time_get();
+        float dt         = (curTime - lastTime) * 0.001f;
+        lastTime         = curTime;
         ENetEvent event;
         while (enet_host_service(server, &event, 0) > 0) {
             switch (event.type) {
             case ENET_EVENT_TYPE_CONNECT:
-                printf("Connection with %x:%u established\n", event.peer->address.host, event.peer->address.port);
+                printf("Connection with %x:%u established\n",
+                       event.peer->address.host,
+                       event.peer->address.port);
                 break;
             case ENET_EVENT_TYPE_RECEIVE:
                 switch (get_packet_type(event.packet)) {
                 case e_client_to_server_join:
-                    on_join(event.peer, server);
+                    on_join(event.packet, event.peer, server);
                     break;
-                case e_client_to_server_state:
-                    on_state(event.packet);
+                case e_client_to_server_input:
+                    on_input(event.packet);
                     break;
                 default:
-                    break;
+                    assert(0);
                 };
                 enet_packet_destroy(event.packet);
-                break;
-            case ENET_EVENT_TYPE_DISCONNECT:
-                printf("Peer %x:%u disconnected\n", event.peer->address.host, event.peer->address.port);
-                on_disconnect(event.peer, server);
                 break;
             default:
                 break;
             };
         }
-
-        // Logic step (collision resolve)
-       for (size_t i = 0; i < entities.size(); ++i)
-            for (size_t j = i+1; j < entities.size(); ++j) {
-                entity_t &bigger  = entities[i].rad >= entities[j].rad ? entities[i] : entities[j];
-                entity_t &smaller = &bigger == &entities[i] ? entities[j] : entities[i];
-                float dx = bigger.x - smaller.x;
-                float dy = bigger.y - smaller.y;
-                float rr = bigger.rad + smaller.rad;
-                if (dx*dx + dy*dy <= rr*rr) {
-                    bigger.rad += smaller.rad*0.5f;
-                    uint16_t &bigger_score = score_map[bigger.eid];
-                    bigger_score += 1 + score_map[smaller.eid]/2;
-                    teleport_entity(smaller);
-                    for (size_t i = 0; i < server->peerCount; ++i)
-                        send_entity_score_update(&server->peers[i], bigger.eid, bigger_score);
-                }
+        static int t = 0;
+        for (entity_t &e : entities) {
+            // simulate
+            simulate_entity(e, dt);
+            // send
+            for (size_t i = 0; i < server->peerCount; ++i) {
+                ENetPeer *peer = &server->peers[i];
+                // skip this here in this implementation
+                // if (controlledMap[e.eid] != peer)
+                send_snapshot(peer, e.eid, e.x, e.y, e.ori);
             }
-
-        for (const entity_t &e : entities)
-            for (size_t i = 0; i < server->peerCount; ++i)
-                send_snapshot(&server->peers[i], e.eid, e.x, e.y, e.rad);
+        }
+        usleep(100000);
     }
 
     enet_host_destroy(server);
-
     return 0;
 }
-
-

@@ -26,5 +26,5 @@ message_type_t get_packet_type(ENetPacket *packet);
 void deserialize_new_entity(ENetPacket *packet, entity_t &ent);
 void deserialize_set_controlled_entity(ENetPacket *packet, uint16_t &eid);
 void deserialize_remove_entity(ENetPacket *packet, uint16_t &eid);
-void deserialize_entity_input(ENetPeer *peer, uint16_t &eid, float &thr, float &steer);
+void deserialize_entity_input(ENetPacket *packet, uint16_t &eid, float &thr, float &steer);
 void deserialize_snapshot(ENetPacket *packet, uint16_t &eid, float &x, float &y, float &ori);
