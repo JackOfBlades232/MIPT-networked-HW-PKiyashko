@@ -7,6 +7,7 @@
 
 enum message_type_t : uint8_t {
     e_client_to_server_join = 0,
+    e_client_to_server_disconnect,
     e_server_to_client_new_entity,
     e_server_to_client_set_controlled_entity,
     e_server_to_client_remove_entity,
@@ -15,6 +16,7 @@ enum message_type_t : uint8_t {
 };
 
 void send_join(ENetPeer *peer);
+void send_disconnect(ENetPeer *peer);
 void send_new_entity(ENetPeer *peer, const entity_t &ent);
 void send_set_controlled_entity(ENetPeer *peer, uint16_t eid);
 void send_remove_entity(ENetPeer *peer, uint16_t eid);

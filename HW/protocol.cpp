@@ -22,6 +22,17 @@ void send_join(ENetPeer *peer)
     enet_peer_send(peer, 0, packet);
 }
 
+void send_disconnect(ENetPeer *peer)
+{
+    if (peer->state != ENET_PEER_STATE_CONNECTED)
+        return;
+
+    ENetPacket *packet = enet_packet_create(nullptr, sizeof(message_type_t), ENET_PACKET_FLAG_RELIABLE);
+    *packet->data = e_client_to_server_disconnect;
+
+    enet_peer_send(peer, 0, packet);
+}
+
 void send_new_entity(ENetPeer *peer, const entity_t &ent)
 {
     if (peer->state != ENET_PEER_STATE_CONNECTED)

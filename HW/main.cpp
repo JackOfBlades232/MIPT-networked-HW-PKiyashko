@@ -5,11 +5,17 @@
 
 #include "raylib.h"
 #include <cassert>
+#include <cstdint>
+#include <cstdlib>
 #include <enet/enet.h>
 
 #include <cmath>
 #include <cstdio>
 #include <vector>
+
+static ENetHost *client      = nullptr;
+static ENetPeer *server_peer = nullptr;
+static bool connected        = false;
 
 static std::vector<entity_t> entities;
 static uint16_t my_entity = c_invalid_entity;
@@ -46,6 +52,25 @@ void on_snapshot(ENetPacket *packet)
         }
 }
 
+void on_remove_entity(ENetPacket *packet)
+{
+    uint16_t eid = c_invalid_entity;
+    deserialize_remove_entity(packet, eid);
+    for (auto it = entities.begin(); it != entities.end(); ++it)
+        if (it->eid == eid) {
+            entities.erase(it);
+            break;
+        }
+}
+
+void on_quit()
+{
+    if (connected) {
+        send_disconnect(server_peer);
+        enet_host_flush(client);
+    }
+}
+
 int main(int argc, const char **argv)
 {
     if (enet_initialize() != 0) {
@@ -53,7 +78,7 @@ int main(int argc, const char **argv)
         return 1;
     }
 
-    ENetHost *client = enet_host_create(nullptr, 1, 2, 0, 0);
+    client = enet_host_create(nullptr, 1, 2, 0, 0);
     if (!client) {
         printf("Cannot create ENet client\n");
         return 1;
@@ -63,22 +88,24 @@ int main(int argc, const char **argv)
     enet_address_set_host(&address, "localhost");
     address.port = 10131;
 
-    ENetPeer *serverPeer = enet_host_connect(client, &address, 2, 0);
-    if (!serverPeer) {
+    server_peer = enet_host_connect(client, &address, 2, 0);
+    if (!server_peer) {
         printf("Cannot connect to server");
         return 1;
     }
+
+    atexit(&on_quit);
 
     int width  = 600;
     int height = 600;
 
     InitWindow(width, height, "HW3 networked MIPT");
 
-    const int scrWidth  = GetMonitorWidth(0);
-    const int scrHeight = GetMonitorHeight(0);
-    if (scrWidth < width || scrHeight < height) {
-        width  = std::min(scrWidth, width);
-        height = std::min(scrHeight - 150, height);
+    const int scr_width  = GetMonitorWidth(0);
+    const int scr_height = GetMonitorHeight(0);
+    if (scr_width < width || scr_height < height) {
+        width  = std::min(scr_width, width);
+        height = std::min(scr_height - 150, height);
         SetWindowSize(width, height);
     }
 
@@ -90,7 +117,6 @@ int main(int argc, const char **argv)
 
     SetTargetFPS(60); // Set our game to run at 60 frames-per-second
 
-    bool connected = false;
     while (!WindowShouldClose()) {
         float dt = GetFrameTime();
         ENetEvent event;
@@ -100,7 +126,7 @@ int main(int argc, const char **argv)
                 printf("Connection with %x:%u established\n",
                        event.peer->address.host,
                        event.peer->address.port);
-                send_join(serverPeer);
+                send_join(server_peer);
                 connected = true;
                 break;
             case ENET_EVENT_TYPE_RECEIVE:
@@ -113,6 +139,9 @@ int main(int argc, const char **argv)
                     break;
                 case e_server_to_client_snapshot:
                     on_snapshot(event.packet);
+                    break;
+                case e_server_to_client_remove_entity:
+                    on_remove_entity(event.packet);
                     break;
                 default:
                     assert(0);
@@ -136,7 +165,7 @@ int main(int argc, const char **argv)
                     float steer = (left ? -1.f : 0.f) + (right ? 1.f : 0.f);
 
                     // Send
-                    send_entity_input(serverPeer, my_entity, thr, steer);
+                    send_entity_input(server_peer, my_entity, thr, steer);
                 }
         }
 

@@ -45,6 +45,39 @@ void on_join(ENetPacket *packet, ENetPeer *peer, ENetHost *host)
     send_set_controlled_entity(peer, new_eid);
 }
 
+void on_disconnect(ENetPeer *peer, ENetHost *host)
+{
+    uint16_t eid = c_invalid_entity;
+    for (auto it = controlled_map.begin(); it != controlled_map.end(); ++it) {
+        if (it->second == peer) {
+            eid = it->first;
+            controlled_map.erase(it);
+            break;
+        }
+    }
+
+    if (eid == c_invalid_entity) // Was already removed
+        return;
+
+    for (auto it = entities.begin(); it != entities.end(); ++it) {
+        if (it->eid == eid) {
+            entities.erase(it);
+            break;
+        }
+    }
+
+    for (size_t i = 0; i < host->peerCount; ++i) {
+        ENetPeer *other_peer = &host->peers[i];
+        if (other_peer->state != ENET_PEER_STATE_CONNECTED ||
+            other_peer == peer)
+        {
+            continue;
+        }
+
+        send_remove_entity(other_peer, eid);
+    }
+}
+
 void on_input(ENetPacket *packet)
 {
     uint16_t eid = c_invalid_entity;
@@ -64,7 +97,7 @@ int main(int argc, const char **argv)
         printf("Cannot init ENet");
         return 1;
     }
-    atexit(enet_deinitialize);
+    atexit(&enet_deinitialize);
 
     ENetAddress address;
 
@@ -91,10 +124,17 @@ int main(int argc, const char **argv)
                        event.peer->address.host,
                        event.peer->address.port);
                 break;
+            case ENET_EVENT_TYPE_DISCONNECT:
+                on_disconnect(event.peer, server);
+                break;
             case ENET_EVENT_TYPE_RECEIVE:
                 switch (get_packet_type(event.packet)) {
                 case e_client_to_server_join:
                     on_join(event.packet, event.peer, server);
+                    break;
+                case e_client_to_server_disconnect:
+                    printf("DEBUG: recv disconnect\n");
+                    on_disconnect(event.peer, server);
                     break;
                 case e_client_to_server_input:
                     on_input(event.packet);
@@ -115,6 +155,12 @@ int main(int argc, const char **argv)
             // send
             for (size_t i = 0; i < server->peerCount; ++i) {
                 ENetPeer *peer = &server->peers[i];
+                if (peer->state != ENET_PEER_STATE_CONNECTED ||
+                    controlled_map[e.eid] == peer)
+                {
+                    continue;
+                }
+
                 // skip this here in this implementation
                 // if (controlledMap[e.eid] != peer)
                 send_snapshot(peer, e.eid, e.x, e.y, e.ori);
