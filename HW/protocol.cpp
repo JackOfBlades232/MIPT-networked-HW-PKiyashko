@@ -1,5 +1,6 @@
 #include "protocol.hpp"
 #include "bitstream.hpp"
+#include <cstdint>
 
 static Bitstream create_packet_writer_bs(ENetPacket *packet)
 {
@@ -92,18 +93,19 @@ void send_entity_input(ENetPeer *peer, uint16_t eid, float thr, float steer)
     enet_peer_send(peer, 1, packet);
 }
 
-void send_snapshot(ENetPeer *peer, uint16_t eid, float x, float y, float ori)
+void send_snapshot(ENetPeer *peer, uint32_t time, uint16_t eid, float x, float y, float ori)
 {
     if (peer->state != ENET_PEER_STATE_CONNECTED)
         return;
 
     ENetPacket *packet = enet_packet_create(nullptr,
-                                            sizeof(message_type_t) + sizeof(eid) +
-                                            sizeof(x) + sizeof(y) + sizeof(ori),
+                                            sizeof(message_type_t) + sizeof(time) +
+                                            sizeof(eid) + sizeof(x) + sizeof(y) + sizeof(ori),
                                             ENET_PACKET_FLAG_UNSEQUENCED);
 
     Bitstream bs = create_packet_writer_bs(packet);
     bs.Write(e_server_to_client_snapshot);
+    bs.Write(time);
     bs.Write(eid);
     bs.Write(x);
     bs.Write(y);
@@ -147,10 +149,11 @@ void deserialize_entity_input(ENetPacket *packet, uint16_t &eid, float &thr, flo
     bs.Read(steer);
 }
 
-void deserialize_snapshot(ENetPacket *packet, uint16_t &eid, float &x, float &y, float &ori)
+void deserialize_snapshot(ENetPacket *packet, uint32_t &time, uint16_t &eid, float &x, float &y, float &ori)
 {
     Bitstream bs = create_packet_reader_bs(packet);
     bs.Skip<message_type_t>();
+    bs.Read(time);
     bs.Read(eid);
     bs.Read(x);
     bs.Read(y);

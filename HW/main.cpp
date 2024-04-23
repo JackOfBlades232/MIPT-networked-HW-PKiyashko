@@ -5,30 +5,75 @@
 
 #include "raylib.h"
 #include <cassert>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <enet/enet.h>
 
 #include <cmath>
 #include <cstdio>
+#include <cstdint>
+#include <iterator>
 #include <vector>
+#include <deque>
+
+struct entity_snapshot_t {
+    uint32_t ts;
+    float x;
+    float y;
+    float ori;
+};
+
+struct entity_state_t {
+    entity_t ent;
+    std::deque<entity_snapshot_t> history;
+};
+
+using HistoryIterator = std::deque<entity_snapshot_t>::iterator;
 
 static ENetHost *client      = nullptr;
 static ENetPeer *server_peer = nullptr;
 static bool connected        = false;
 
-static std::vector<entity_t> entities;
+static std::vector<entity_state_t> entities;
 static uint16_t my_entity = c_invalid_entity;
+
+HistoryIterator bin_seach_in_history(entity_state_t &ent_state, uint32_t ts)
+{
+    if (ent_state.history.empty())
+        return ent_state.history.end();
+
+    auto lo = ent_state.history.begin();
+    auto hi = ent_state.history.end() - 1;
+
+    if (ts >= hi->ts)
+        return hi;
+    else if (ts <= lo->ts)
+        return lo;
+
+    size_t dist;
+    while ((dist = std::distance(lo, hi)) > 1) {
+        auto mid = lo + dist/2;
+        if (mid->ts > ts)
+            hi = mid;
+        else if (mid->ts < ts)
+            lo = mid;
+        else
+            return mid;
+    }
+
+    return hi;
+}
 
 void on_new_entity_packet(ENetPacket *packet)
 {
     entity_t new_entity;
     deserialize_new_entity(packet, new_entity);
     // TODO: Direct adressing, of course!
-    for (const entity_t &e : entities)
-        if (e.eid == new_entity.eid)
+    for (const entity_state_t &e : entities)
+        if (e.ent.eid == new_entity.eid)
             return; // don't need to do anything, we already have entity
-    entities.push_back(new_entity);
+    entities.push_back(entity_state_t{new_entity});
 }
 
 void on_set_controlled_entity(ENetPacket *packet)
@@ -36,20 +81,21 @@ void on_set_controlled_entity(ENetPacket *packet)
     deserialize_set_controlled_entity(packet, my_entity);
 }
 
-void on_snapshot(ENetPacket *packet)
+uint32_t on_snapshot(ENetPacket *packet) // returns server timestamp
 {
+    uint32_t ts  = 0;
     uint16_t eid = c_invalid_entity;
     float x      = 0.f;
     float y      = 0.f;
     float ori    = 0.f;
-    deserialize_snapshot(packet, eid, x, y, ori);
+    deserialize_snapshot(packet, ts, eid, x, y, ori);
+
     // TODO: Direct adressing, of course!
-    for (entity_t &e : entities)
-        if (e.eid == eid) {
-            e.x   = x;
-            e.y   = y;
-            e.ori = ori;
-        }
+    for (entity_state_t &e : entities)
+        if (e.ent.eid == eid)
+            e.history.push_back(entity_snapshot_t{ts, x, y, ori});
+
+    return ts;
 }
 
 void on_remove_entity(ENetPacket *packet)
@@ -57,7 +103,7 @@ void on_remove_entity(ENetPacket *packet)
     uint16_t eid = c_invalid_entity;
     deserialize_remove_entity(packet, eid);
     for (auto it = entities.begin(); it != entities.end(); ++it)
-        if (it->eid == eid) {
+        if (it->ent.eid == eid) {
             entities.erase(it);
             break;
         }
@@ -117,8 +163,13 @@ int main(int argc, const char **argv)
 
     SetTargetFPS(60); // Set our game to run at 60 frames-per-second
 
+    // collected from the first stapshot. For interpolation, we
+    // introduce and additional lag equal to 200ms.
+    // @TODO(PKiyashko): make this flexible w/ respect to RTT
+    uint32_t dt_from_server = 200;
+    bool dt_initialized = false;
     while (!WindowShouldClose()) {
-        float dt = GetFrameTime();
+        uint32_t local_ts = (uint32_t)(GetTime() * 1000.0);
         ENetEvent event;
         while (enet_host_service(client, &event, 0) > 0) {
             switch (event.type) {
@@ -137,14 +188,17 @@ int main(int argc, const char **argv)
                 case e_server_to_client_set_controlled_entity:
                     on_set_controlled_entity(event.packet);
                     break;
-                case e_server_to_client_snapshot:
-                    on_snapshot(event.packet);
-                    break;
+                case e_server_to_client_snapshot: {
+                    uint32_t server_ts = on_snapshot(event.packet);
+                    if (!dt_initialized) {
+                        dt_from_server += local_ts - server_ts;
+                        dt_initialized = true;
+                    }
+                } break;
                 case e_server_to_client_remove_entity:
                     on_remove_entity(event.packet);
                     break;
-                default:
-                    assert(0);
+                default: assert(0);
                 };
                 break;
             default:
@@ -152,14 +206,34 @@ int main(int argc, const char **argv)
             };
         }
 
+        uint32_t ts = local_ts - dt_from_server;
+
         if (my_entity != c_invalid_entity) {
             bool left  = IsKeyDown(KEY_LEFT);
             bool right = IsKeyDown(KEY_RIGHT);
             bool up    = IsKeyDown(KEY_UP);
             bool down  = IsKeyDown(KEY_DOWN);
             // TODO: Direct adressing, of course!
-            for (entity_t &e : entities)
-                if (e.eid == my_entity) {
+            for (entity_state_t &e : entities) {
+                // Interpolate
+                HistoryIterator it = bin_seach_in_history(e, ts);
+                printf("%lu\n", e.history.size());
+                if (it == e.history.begin()) {
+                    e.ent.x = it->x;
+                    e.ent.y = it->y;
+                    e.ent.ori = it->ori;
+                } else if (it != e.history.end()) {
+                    HistoryIterator prev = it-1;
+                    float coeff = (float)(it->ts - ts) / (it->ts - prev->ts);
+                    e.ent.x = coeff*prev->x + (1.f - coeff)*it->x;
+                    e.ent.y = coeff*prev->y + (1.f - coeff)*it->y;
+                    e.ent.ori = coeff*prev->ori + (1.f - coeff)*it->ori;
+
+                    e.history.erase(e.history.begin(), prev);
+                }
+
+                // Send controls
+                if (e.ent.eid == my_entity) {
                     // Update
                     float thr   = (up ? 1.f : 0.f) + (down ? -1.f : 0.f);
                     float steer = (left ? -1.f : 0.f) + (right ? 1.f : 0.f);
@@ -167,15 +241,16 @@ int main(int argc, const char **argv)
                     // Send
                     send_entity_input(server_peer, my_entity, thr, steer);
                 }
+            }
         }
 
         BeginDrawing();
         ClearBackground(GRAY);
         BeginMode2D(camera);
-        for (const entity_t &e : entities) {
-            const Rectangle rect = {e.x, e.y, 3.f, 1.f};
+        for (const entity_state_t &e : entities) {
+            const Rectangle rect = {e.ent.x, e.ent.y, 3.f, 1.f};
             DrawRectanglePro(
-                rect, {0.f, 0.5f}, e.ori * 180.f / PI, GetColor(e.color));
+                rect, {0.f, 0.5f}, e.ent.ori * 180.f / PI, GetColor(e.ent.color));
         }
 
         EndMode2D();

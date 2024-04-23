@@ -109,11 +109,11 @@ int main(int argc, const char **argv)
         return 1;
     }
 
-    uint32_t lastTime = enet_time_get();
+    uint32_t last_time = enet_time_get();
     while (true) {
-        uint32_t curTime = enet_time_get();
-        float dt         = (curTime - lastTime) * 0.001f;
-        lastTime         = curTime;
+        uint32_t cur_time = enet_time_get();
+        float dt          = (cur_time - last_time) * 0.001f;
+        last_time         = cur_time;
         ENetEvent event;
         while (enet_host_service(server, &event, 0) > 0) {
             switch (event.type) {
@@ -156,7 +156,7 @@ int main(int argc, const char **argv)
                 {
                     // skip this here in this implementation
                     // if (controlledMap[e.eid] != peer)
-                    send_snapshot(peer, e.eid, e.x, e.y, e.ori);
+                    send_snapshot(peer, cur_time, e.eid, e.x, e.y, e.ori);
                 }
             }
         }
