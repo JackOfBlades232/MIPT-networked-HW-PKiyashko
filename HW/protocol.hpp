@@ -6,9 +6,6 @@
 #include <cstdint>
 #include <stdint.h>
 
-// @TODO: add throttle and steer to snapshots, they will be needed for
-// proper extrapolation of other entities
-
 enum message_type_t : uint8_t {
     e_client_to_server_join = 0,
     e_client_to_server_disconnect,

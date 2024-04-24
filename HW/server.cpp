@@ -145,6 +145,7 @@ int main(int argc, const char **argv)
                 break;
             };
         }
+
         static int t = 0;
         for (entity_t &e : entities) {
             // simulate
@@ -157,7 +158,7 @@ int main(int argc, const char **argv)
                     // skip this here in this implementation
                     // if (controlledMap[e.eid] != peer)
                     send_snapshot(
-                        peer, cur_time, e.eid, e.x, e.y, e.ori, e.thr, e.speed);
+                        peer, cur_time, e.eid, e.x, e.y, e.ori, e.thr, e.steer);
                 }
             }
         }

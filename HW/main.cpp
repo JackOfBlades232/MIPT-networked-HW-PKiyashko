@@ -2,6 +2,7 @@
 //
 #include "entity.hpp"
 #include "protocol.hpp"
+#include "math_utils.hpp"
 
 #include "raylib.h"
 #include <cassert>
@@ -28,6 +29,7 @@ struct entity_state_t {
     entity_t ent;
     struct {
         uint32_t ts;
+        uint32_t start_ts;
         bool initialized = false;
     } sim;
     std::deque<entity_snapshot_t> history;
@@ -94,25 +96,53 @@ void interpolate_entity(entity_state_t &ent_state, uint32_t ts)
 
 void extrapolate_entity(entity_state_t &ent_state, uint32_t ts)
 {
-    printf("extra\n");
+    printf("extra");
 
-    if (!ent_state.sim.initialized) {
-        if (ent_state.history.empty())
+    auto init_ent_sim = [](entity_state_t &e) {
+        if (e.history.empty())
             return;
 
-        ent_state.sim.ts  = ent_state.history.back().ts;
-        ent_state.ent.x   = ent_state.history.back().x;
-        ent_state.ent.y   = ent_state.history.back().y;
-        ent_state.ent.ori = ent_state.history.back().ori;
+        e.sim.ts  = e.history.back().ts;
+        e.ent.x   = e.history.back().x;
+        e.ent.y   = e.history.back().y;
+        e.ent.ori = e.history.back().ori;
 
-        ent_state.sim.initialized = true;
+        e.sim.start_ts = e.sim.ts;
+
+        e.sim.initialized = true;
+    };
+
+    if (!ent_state.sim.initialized) {
+        // Set simulation initial state to last snapshot
+        init_ent_sim(ent_state);
+    } else if (ent_state.history.back().ts > ent_state.sim.start_ts) {
+        // Resimulate from last snapshot
+        printf(" resim");
+        uint32_t last_sim_ts = ent_state.sim.ts;
+        init_ent_sim(ent_state);
+        uint32_t sim_ts;
+        for (sim_ts = ent_state.history.back().ts;
+             sim_ts <= last_sim_ts;
+             sim_ts += 100u)
+        {
+            simulate_entity(ent_state.ent, 0.1f);
+        }
+        if (sim_ts < last_sim_ts)
+            simulate_entity(ent_state.ent, (float)(last_sim_ts - sim_ts) * 1e-3);
+
+        ent_state.sim.ts = last_sim_ts;
     }
 
-    simulate_entity(ent_state.ent, (float)(ts - ent_state.sim.ts) * 1e-3);
-    ent_state.sim.ts = ts;
+    putchar('\n');
+
+    while (ent_state.sim.ts < ts) {
+        uint32_t step = min(100u, ts - ent_state.sim.ts);
+        simulate_entity(ent_state.ent, (float)step * 1e-3);
+        ent_state.sim.ts += step;
+    }
 }
 
-void simulate_entity(entity_state_t &ent_state, uint32_t ts)
+void calculate_entity_state(entity_state_t &ent_state, uint32_t ts)
 {
     if (ent_state.history.empty())
         return;
@@ -147,8 +177,8 @@ uint32_t on_snapshot(ENetPacket *packet) // returns server timestamp
     float y      = 0.f;
     float ori    = 0.f;
     float thr    = 0.f;
-    float speed  = 0.f;
-    deserialize_snapshot(packet, ts, eid, x, y, ori, thr, speed);
+    float steer  = 0.f;
+    deserialize_snapshot(packet, ts, eid, x, y, ori, thr, steer);
 
     // TODO: Direct adressing, of course!
     for (entity_state_t &e : entities)
@@ -156,7 +186,7 @@ uint32_t on_snapshot(ENetPacket *packet) // returns server timestamp
             e.history.push_back(entity_snapshot_t{ts, x, y, ori});
             if (eid != my_entity) {
                 e.ent.thr   = thr;
-                e.ent.speed = speed;
+                e.ent.steer = steer;
             }
         }
 
@@ -228,11 +258,11 @@ int main(int argc, const char **argv)
 
     SetTargetFPS(60); // Set our game to run at 60 frames-per-second
 
-    // collected from the first stapshot. For interpolation, we
-    // introduce and additional lag equal to 40ms. This is not enough
+    // collected from the first smapshot. For interpolation, we
+    // introduce and additional lag equal to X ms. This is not enough
     // to always interpolate, and too much to always extrapolate.
     // @TODO(PKiyashko): make this flexible w/ respect to RTT
-    uint32_t dt_from_server = 40;
+    uint32_t dt_from_server = 0; // base val = additional lag
     bool dt_initialized = false;
     while (!WindowShouldClose()) {
         uint32_t local_ts = (uint32_t)(GetTime() * 1000.0);
@@ -291,8 +321,8 @@ int main(int argc, const char **argv)
                     send_entity_input(server_peer, my_entity, e.ent.thr, e.ent.steer);
                 }
 
-                // Interpolate/Extrapolate
-                simulate_entity(e, ts);
+                // Interpolate/Extrapolate/Resimulate
+                calculate_entity_state(e, ts);
             }
         }
 

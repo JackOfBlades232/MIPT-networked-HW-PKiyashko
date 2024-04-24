@@ -22,3 +22,15 @@ inline float sign(float in)
 {
     return in > 0.f ? 1.f : in < 0.f ? -1.f : 0.f;
 }
+
+template <class T>
+inline T max(T a, T b)
+{
+    return a < b ? b : a;
+}
+
+template <class T>
+inline T min(T a, T b)
+{
+    return a < b ? a : b;
+}
