@@ -1,5 +1,6 @@
 #include "protocol.hpp"
 #include "bitstream.hpp"
+#include "enet/enet.h"
 #include <cstdint>
 
 static Bitstream create_packet_writer_bs(ENetPacket *packet)
@@ -93,7 +94,22 @@ void send_entity_input(ENetPeer *peer, uint16_t eid, float thr, float steer)
     enet_peer_send(peer, 1, packet);
 }
 
-void send_snapshot(ENetPeer *peer, uint32_t time, uint16_t eid, float x,
+void send_sync_clock(ENetPeer *peer, int64_t time)
+{
+    if (peer->state != ENET_PEER_STATE_CONNECTED)
+        return;
+
+    ENetPacket *packet = enet_packet_create(nullptr, 
+                                            sizeof(message_type_t) + sizeof(time),
+                                            ENET_PACKET_FLAG_RELIABLE);
+    Bitstream bs = create_packet_writer_bs(packet);
+    bs.Write(e_server_to_client_clock_sync);
+    bs.Write(time);
+
+    enet_peer_send(peer, 0, packet);
+}
+
+void send_snapshot(ENetPeer *peer, int64_t time, uint16_t eid, float x,
                    float y, float ori, float thr, float steer)
 {
     if (peer->state != ENET_PEER_STATE_CONNECTED)
@@ -153,7 +169,14 @@ void deserialize_entity_input(ENetPacket *packet, uint16_t &eid, float &thr, flo
     bs.Read(steer);
 }
 
-void deserialize_snapshot(ENetPacket *packet, uint32_t &time, uint16_t &eid,
+void deserialize_sync_clock(ENetPacket *packet, int64_t &time)
+{
+    Bitstream bs = create_packet_reader_bs(packet);
+    bs.Skip<message_type_t>();
+    bs.Read(time);
+}
+
+void deserialize_snapshot(ENetPacket *packet, int64_t &time, uint16_t &eid,
                           float &x, float &y, float &ori, float &thr, float &steer)
 {
     Bitstream bs = create_packet_reader_bs(packet);

@@ -47,6 +47,9 @@ void on_join(ENetPacket *packet, ENetPeer *peer, ENetHost *host)
         send_new_entity(&host->peers[i], ent);
     // send info about controlled entity
     send_set_controlled_entity(peer, new_eid);
+
+    // Send current server timestamp for initial sync
+    send_sync_clock(peer, enet_time_get());
 }
 
 void on_disconnect(ENetPeer *peer, ENetHost *host)
@@ -113,11 +116,10 @@ int main(int argc, const char **argv)
         return 1;
     }
 
-    uint32_t last_time = enet_time_get();
+    int64_t last_time = enet_time_get();
     while (true) {
-        uint32_t cur_time = enet_time_get();
-        float dt          = (cur_time - last_time) * 0.001f;
-        last_time         = cur_time;
+        int64_t pre_event_loop_time = enet_time_get();
+
         ENetEvent event;
         while (enet_host_service(server, &event, 0) > 0) {
             switch (event.type) {
@@ -150,7 +152,10 @@ int main(int argc, const char **argv)
             };
         }
 
-        static int t = 0;
+        int64_t cur_time = enet_time_get();
+        float dt          = (cur_time - last_time) * 0.001f;
+        last_time         = cur_time;
+
         for (entity_t &e : entities) {
             // simulate
             simulate_entity(e, dt);
@@ -166,9 +171,9 @@ int main(int argc, const char **argv)
                 }
             }
         }
-        uint32_t frame_time = enet_time_get() - cur_time;
-        if (frame_time < c_sim_step_ms)
-            std::this_thread::sleep_for(std::chrono::milliseconds(c_sim_step_ms - frame_time));
+        int64_t frame_time = enet_time_get() - pre_event_loop_time;
+        if (frame_time < c_server_tick_ms)
+            std::this_thread::sleep_for(std::chrono::milliseconds(c_server_tick_ms - frame_time));
     }
 
     enet_host_destroy(server);

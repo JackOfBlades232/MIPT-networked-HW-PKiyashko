@@ -3,5 +3,5 @@
 #include <cstdint>
 
 enum : uint32_t {
-    c_sim_step_ms = 100
+    c_server_tick_ms = 100
 };

@@ -13,6 +13,7 @@ enum message_type_t : uint8_t {
     e_server_to_client_set_controlled_entity,
     e_server_to_client_remove_entity,
     e_client_to_server_input,
+    e_server_to_client_clock_sync,
     e_server_to_client_snapshot
 };
 
@@ -22,7 +23,8 @@ void send_new_entity(ENetPeer *peer, const entity_t &ent);
 void send_set_controlled_entity(ENetPeer *peer, uint16_t eid);
 void send_remove_entity(ENetPeer *peer, uint16_t eid);
 void send_entity_input(ENetPeer *peer, uint16_t eid, float thr, float steer);
-void send_snapshot(ENetPeer *peer, uint32_t time, uint16_t eid, float x,
+void send_sync_clock(ENetPeer *peer, int64_t time);
+void send_snapshot(ENetPeer *peer, int64_t time, uint16_t eid, float x,
                    float y, float ori, float thr, float steer);
 
 message_type_t get_packet_type(ENetPacket *packet);
@@ -31,5 +33,6 @@ void deserialize_new_entity(ENetPacket *packet, entity_t &ent);
 void deserialize_set_controlled_entity(ENetPacket *packet, uint16_t &eid);
 void deserialize_remove_entity(ENetPacket *packet, uint16_t &eid);
 void deserialize_entity_input(ENetPacket *packet, uint16_t &eid, float &thr, float &steer);
-void deserialize_snapshot(ENetPacket *packet, uint32_t &time, uint16_t &eid,
+void deserialize_sync_clock(ENetPacket *packet, int64_t &time);
+void deserialize_snapshot(ENetPacket *packet, int64_t &time, uint16_t &eid,
                           float &x, float &y, float &ori, float &thr, float &steer);
