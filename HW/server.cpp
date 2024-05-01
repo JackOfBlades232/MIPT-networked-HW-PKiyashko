@@ -1,7 +1,9 @@
 #include "entity.hpp"
 #include "protocol.hpp"
+#include "shared_consts.hpp"
 
 #include <cassert>
+#include <cstdint>
 #include <enet/enet.h>
 
 #include <cstdio>
@@ -30,7 +32,7 @@ void on_join(ENetPacket *packet, ENetPeer *peer, ENetHost *host)
 
     entity_t ent = {
         color, x, y, 0.f, 
-        (rand() / RAND_MAX) * 3.141592654f, 
+        ((float)rand() / RAND_MAX) * 3.141592654f, 
         0.f, 0.f, 
         new_eid
     };
@@ -162,7 +164,9 @@ int main(int argc, const char **argv)
                 }
             }
         }
-        usleep(100000);
+        uint32_t frame_time = enet_time_get() - cur_time;
+        if (frame_time < c_sim_step_ms)
+            usleep((c_sim_step_ms - frame_time) * 100);
     }
 
     enet_host_destroy(server);

@@ -5,6 +5,7 @@
 #include "math_utils.hpp"
 
 #include "raylib.h"
+#include "shared_consts.hpp"
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -123,9 +124,9 @@ void extrapolate_entity(entity_state_t &ent_state, uint32_t ts)
         uint32_t sim_ts;
         for (sim_ts = ent_state.history.back().ts;
              sim_ts <= last_sim_ts;
-             sim_ts += 100u)
+             sim_ts += c_sim_step_ms)
         {
-            simulate_entity(ent_state.ent, 0.1f);
+            simulate_entity(ent_state.ent, (float)c_sim_step_ms * 1e-3);
         }
         if (sim_ts < last_sim_ts)
             simulate_entity(ent_state.ent, (float)(last_sim_ts - sim_ts) * 1e-3);
@@ -136,7 +137,7 @@ void extrapolate_entity(entity_state_t &ent_state, uint32_t ts)
     putchar('\n');
 
     while (ent_state.sim.ts < ts) {
-        uint32_t step = min(100u, ts - ent_state.sim.ts);
+        uint32_t step = min((uint32_t)c_sim_step_ms, ts - ent_state.sim.ts);
         simulate_entity(ent_state.ent, (float)step * 1e-3);
         ent_state.sim.ts += step;
     }
@@ -297,6 +298,8 @@ int main(int argc, const char **argv)
                 default: assert(0);
                 };
                 break;
+            case ENET_EVENT_TYPE_DISCONNECT:
+                goto done;
             default:
                 break;
             };
@@ -339,6 +342,7 @@ int main(int argc, const char **argv)
         EndDrawing();
     }
 
+done:
     CloseWindow();
     return 0;
 }
