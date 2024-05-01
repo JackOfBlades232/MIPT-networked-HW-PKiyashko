@@ -24,6 +24,8 @@ struct entity_snapshot_t {
     float x;
     float y;
     float ori;
+    float thr;
+    float steer;
 };
 
 struct entity_state_t {
@@ -103,11 +105,14 @@ void extrapolate_entity(entity_state_t &ent_state, uint32_t ts)
         if (e.history.empty())
             return;
 
-        e.sim.ts  = e.history.back().ts;
         e.ent.x   = e.history.back().x;
         e.ent.y   = e.history.back().y;
         e.ent.ori = e.history.back().ori;
 
+        e.ent.thr   = e.history.back().thr;
+        e.ent.steer = e.history.back().steer;
+
+        e.sim.ts       = e.history.back().ts;
         e.sim.start_ts = e.sim.ts;
 
         e.sim.initialized = true;
@@ -259,14 +264,17 @@ int main(int argc, const char **argv)
 
     SetTargetFPS(60); // Set our game to run at 60 frames-per-second
 
-    // collected from the first smapshot. For interpolation, we
-    // introduce and additional lag equal to X ms. This is not enough
-    // to always interpolate, and too much to always extrapolate.
-    // @TODO(PKiyashko): make this flexible w/ respect to RTT
-    uint32_t dt_from_server = 0; // base val = additional lag
-    bool dt_initialized = false;
+    const uint32_t interpolation_lag_ms = c_sim_step_ms/4;
+    uint32_t last_local_ts              = (uint32_t)(GetTime() * 1000.0);
+    uint32_t last_synced_ts             = 0;
+    uint32_t dts_from_last_sync         = 0;
+
     while (!WindowShouldClose()) {
-        uint32_t local_ts = (uint32_t)(GetTime() * 1000.0);
+        uint32_t cur_local_ts = (uint32_t)(GetTime() * 1000.0);
+        uint32_t dts          = cur_local_ts - last_local_ts;
+
+        dts_from_last_sync += dts;
+
         ENetEvent event;
         while (enet_host_service(client, &event, 0) > 0) {
             switch (event.type) {
@@ -287,10 +295,10 @@ int main(int argc, const char **argv)
                     break;
                 case e_server_to_client_snapshot: {
                     uint32_t server_ts = on_snapshot(event.packet);
-                    if (!dt_initialized) {
-                        dt_from_server += local_ts - server_ts;
-                        dt_initialized = true;
-                    }
+                    last_synced_ts =
+                        server_ts + server_peer->lastRoundTripTime/2 -
+                        server_peer->roundTripTime/2 - interpolation_lag_ms;
+                    dts_from_last_sync = 0;
                 } break;
                 case e_server_to_client_remove_entity:
                     on_remove_entity(event.packet);
@@ -305,7 +313,7 @@ int main(int argc, const char **argv)
             };
         }
 
-        uint32_t ts = local_ts - dt_from_server;
+        uint32_t ts = last_synced_ts + dts_from_last_sync;
 
         if (my_entity != c_invalid_entity) {
             bool left  = IsKeyDown(KEY_LEFT);
