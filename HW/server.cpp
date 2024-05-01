@@ -10,6 +10,8 @@
 #include <cstdlib>
 #include <map>
 #include <vector>
+#include <thread>
+#include <chrono>
 
 static std::vector<entity_t> entities;
 static std::map<uint16_t, ENetPeer *> controlled_map;
@@ -166,7 +168,7 @@ int main(int argc, const char **argv)
         }
         uint32_t frame_time = enet_time_get() - cur_time;
         if (frame_time < c_sim_step_ms)
-            usleep((c_sim_step_ms - frame_time) * 100);
+            std::this_thread::sleep_for(std::chrono::milliseconds(c_sim_step_ms - frame_time));
     }
 
     enet_host_destroy(server);

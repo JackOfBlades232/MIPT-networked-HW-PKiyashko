@@ -1,5 +1,6 @@
 // initial skeleton is a clone from https://github.com/jpcy/bgfx-minimal-example
 //
+#define WIN32_LEAN_AND_MEAN
 #include "entity.hpp"
 #include "protocol.hpp"
 #include "math_utils.hpp"
@@ -264,7 +265,7 @@ int main(int argc, const char **argv)
 
     SetTargetFPS(60); // Set our game to run at 60 frames-per-second
 
-    const uint32_t interpolation_lag_ms = c_sim_step_ms/4;
+    const uint32_t interpolation_lag_ms = c_sim_step_ms;
     uint32_t last_local_ts              = (uint32_t)(GetTime() * 1000.0);
     uint32_t last_synced_ts             = 0;
     uint32_t dts_from_last_sync         = 0;
@@ -295,9 +296,11 @@ int main(int argc, const char **argv)
                     break;
                 case e_server_to_client_snapshot: {
                     uint32_t server_ts = on_snapshot(event.packet);
-                    last_synced_ts =
+                    /* last_synced_ts =
                         server_ts + server_peer->lastRoundTripTime/2 -
-                        server_peer->roundTripTime/2 - interpolation_lag_ms;
+                        server_peer->roundTripTime/2 - interpolation_lag_ms; */
+                    last_synced_ts =
+                        server_ts - interpolation_lag_ms;
                     dts_from_last_sync = 0;
                 } break;
                 case e_server_to_client_remove_entity:
