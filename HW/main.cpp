@@ -290,7 +290,7 @@ int main(int argc, const char **argv)
 
     SetTargetFPS(60); // Set our game to run at 60 frames-per-second
 
-    const int64_t interpolation_lag_ms = c_server_tick_ms;
+    const int64_t interpolation_lag_ms = 2*c_server_tick_ms;
     int64_t delta_to_server_time       = INT64_MIN;
 
     while (!WindowShouldClose()) {
