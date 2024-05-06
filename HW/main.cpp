@@ -4,16 +4,15 @@
 #define WIN32_LEAN_AND_MEAN
 #include "entity.hpp"
 #include "protocol.hpp"
-#include "math_utils.hpp"
+#include "shared_consts.hpp"
 
 #include "raylib.h"
-#include "shared_consts.hpp"
+#include <enet/enet.h>
+
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
-#include <enet/enet.h>
-
 #include <cstdio>
 #include <cstdint>
 #include <iterator>
@@ -90,15 +89,14 @@ void interpolate_entity(entity_state_t &ent_state, int64_t ts)
 
     ent_state.sim.initialized = false;
 
-    HistoryIterator<entity_snapshot_t> it =
-        bin_search_in_history<entity_snapshot_t>(ent_state.history, ts);
+    auto it = bin_search_in_history<entity_snapshot_t>(ent_state.history, ts);
 
     if (it == ent_state.history.begin()) {
         ent_state.ent.x = it->x;
         ent_state.ent.y = it->y;
         ent_state.ent.ori = it->ori;
     } else if (it != ent_state.history.end()) {
-        HistoryIterator<entity_snapshot_t> prev = it-1;
+        auto prev = it-1;
         float coeff = (float)(it->ts - ts) / (it->ts - prev->ts);
         ent_state.ent.x = coeff*prev->x + (1.f - coeff)*it->x;
         ent_state.ent.y = coeff*prev->y + (1.f - coeff)*it->y;
@@ -123,14 +121,6 @@ void extrapolate_entity(entity_state_t &ent_state, int64_t ts)
         if (e.ent.eid != my_entity) {
             e.ent.thr   = e.history.back().thr;
             e.ent.steer = e.history.back().steer;
-        } else {
-            HistoryIterator<controls_snapshot_t> it =
-                bin_search_in_history<controls_snapshot_t>(my_controls_history,
-                                                           e.history.back().ts);
-            if (it != my_controls_history.end()) {
-                e.ent.thr   = e.history.back().thr;
-                e.ent.steer = e.history.back().steer;
-            }
         }
 
         e.sim.last_ts        = e.history.back().ts;
@@ -143,42 +133,37 @@ void extrapolate_entity(entity_state_t &ent_state, int64_t ts)
     if (!ent_state.sim.initialized) {
         // Set simulation initial state to last snapshot
         init_ent_sim(ent_state);
-    } /* else if (ent_state.history.back().ts > ent_state.sim.start_ts) {
+    } else if (ent_state.history.back().ts > ent_state.sim.start_ts) {
         // Resimulate from last snapshot
         printf(" resim");
-        int64_t last_sim_ts = ent_state.sim.ts;
         init_ent_sim(ent_state);
-        int64_t sim_ts;
-        for (sim_ts = ent_state.history.back().ts;
-             sim_ts <= last_sim_ts;
-             sim_ts += c_physics_tick_ms)
-        {
-            // @SPEED(PKiyashko): this is quite suboptimal, make better if it's
-            //                    a bottleneck
-            if (ent_state.ent.eid == my_entity) {
-                HistoryIterator<controls_snapshot_t> it =
-                    bin_search_in_history<controls_snapshot_t>(my_controls_history, sim_ts);
-
-                if (it != my_controls_history.end()) {
-                    ent_state.ent.thr   = it->thr;
-                    ent_state.ent.steer = it->steer;
-
-                    my_controls_history.erase(my_controls_history.begin(), it);
-                }
-            }
-            simulate_entity(ent_state.ent, (float)c_physics_tick_ms * 0.001f);
-        }
-
-        ent_state.sim.ts = sim_ts;
-    } */
+        ent_state.history.erase(ent_state.history.begin(), ent_state.history.end()-1);
+    }
 
     putchar('\n');
 
-    while (ent_state.sim.ts < ts) {
-        int64_t step = min((int64_t)c_physics_tick_ms, ts - ent_state.sim.ts);
-        simulate_entity(ent_state.ent, (float)step * 1e-3);
-        ent_state.sim.ts += step;
+    ent_state.sim.accumulated_dt += ts - ent_state.sim.last_ts;
+
+    int nticks = ent_state.sim.accumulated_dt / c_physics_tick_ms;
+    ent_state.sim.accumulated_dt -= nticks * c_physics_tick_ms;
+    for (int i = 0; i < nticks; ++i) {
+        if (ent_state.ent.eid == my_entity) {
+            auto it = bin_search_in_history<controls_snapshot_t>(
+                my_controls_history,
+                ent_state.sim.last_ts + i * c_physics_tick_ms);
+
+            if (it != my_controls_history.end()) {
+                ent_state.ent.thr   = it->thr;
+                ent_state.ent.steer = it->steer;
+
+                my_controls_history.erase(my_controls_history.begin(), it);
+            }
+        }
+
+        simulate_entity(ent_state.ent, PHYSICS_TICK_SEC);
     }
+
+    ent_state.sim.last_ts = ts;
 }
 
 void calculate_entity_state(entity_state_t &ent_state, int64_t ts)

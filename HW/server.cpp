@@ -159,7 +159,7 @@ int main(int argc, const char **argv)
         for (entity_t &e : entities) {
             // simulate
             for (int i = 0; i < nticks; ++i)
-                simulate_entity(e, (float)c_physics_tick_ms * 0.001f);
+                simulate_entity(e, PHYSICS_TICK_SEC);
 
             // send
             for (size_t i = 0; i < server->peerCount; ++i) {
