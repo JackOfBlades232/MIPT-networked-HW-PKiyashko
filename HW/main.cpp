@@ -38,8 +38,7 @@ struct entity_snapshot_t {
 struct entity_state_t {
     entity_t ent;
     struct {
-        int64_t ts;
-        int64_t start_ts;
+        int64_t accumulated_dt, last_ts, start_ts;
         bool initialized = false;
     } sim;
     std::deque<entity_snapshot_t> history;
@@ -124,10 +123,19 @@ void extrapolate_entity(entity_state_t &ent_state, int64_t ts)
         if (e.ent.eid != my_entity) {
             e.ent.thr   = e.history.back().thr;
             e.ent.steer = e.history.back().steer;
+        } else {
+            HistoryIterator<controls_snapshot_t> it =
+                bin_search_in_history<controls_snapshot_t>(my_controls_history,
+                                                           e.history.back().ts);
+            if (it != my_controls_history.end()) {
+                e.ent.thr   = e.history.back().thr;
+                e.ent.steer = e.history.back().steer;
+            }
         }
 
-        e.sim.ts       = e.history.back().ts;
-        e.sim.start_ts = e.sim.ts;
+        e.sim.last_ts        = e.history.back().ts;
+        e.sim.start_ts       = e.sim.last_ts;
+        e.sim.accumulated_dt = 0;
 
         e.sim.initialized = true;
     };
@@ -135,7 +143,7 @@ void extrapolate_entity(entity_state_t &ent_state, int64_t ts)
     if (!ent_state.sim.initialized) {
         // Set simulation initial state to last snapshot
         init_ent_sim(ent_state);
-    } else if (ent_state.history.back().ts > ent_state.sim.start_ts) {
+    } /* else if (ent_state.history.back().ts > ent_state.sim.start_ts) {
         // Resimulate from last snapshot
         printf(" resim");
         int64_t last_sim_ts = ent_state.sim.ts;
@@ -162,7 +170,7 @@ void extrapolate_entity(entity_state_t &ent_state, int64_t ts)
         }
 
         ent_state.sim.ts = sim_ts;
-    }
+    } */
 
     putchar('\n');
 
