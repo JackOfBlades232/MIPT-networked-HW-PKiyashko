@@ -47,9 +47,6 @@ void on_join(ENetPacket *packet, ENetPeer *peer, ENetHost *host)
         send_new_entity(&host->peers[i], ent);
     // send info about controlled entity
     send_set_controlled_entity(peer, new_eid);
-
-    // Send current server timestamp for initial sync
-    send_sync_clock(peer, enet_time_get());
 }
 
 void on_disconnect(ENetPeer *peer, ENetHost *host)
@@ -116,7 +113,8 @@ int main(int argc, const char **argv)
         return 1;
     }
 
-    int64_t last_time = enet_time_get();
+    int64_t last_time      = enet_time_get();
+    int64_t accumulated_dt = 0;
     while (true) {
         int64_t pre_event_loop_time = enet_time_get();
 
@@ -153,12 +151,16 @@ int main(int argc, const char **argv)
         }
 
         int64_t cur_time = enet_time_get();
-        float dt          = (cur_time - last_time) * 0.001f;
-        last_time         = cur_time;
+        accumulated_dt += cur_time - last_time;
+        last_time = cur_time;
 
+        int nticks = accumulated_dt / c_physics_tick_ms;
+        accumulated_dt -= c_physics_tick_ms * nticks;
         for (entity_t &e : entities) {
             // simulate
-            simulate_entity(e, dt);
+            for (int i = 0; i < nticks; ++i)
+                simulate_entity(e, (float)c_physics_tick_ms * 0.001f);
+
             // send
             for (size_t i = 0; i < server->peerCount; ++i) {
                 ENetPeer *peer = &server->peers[i];

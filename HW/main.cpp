@@ -1,5 +1,6 @@
 // initial skeleton is a clone from https://github.com/jpcy/bgfx-minimal-example
 //
+#include <stdio.h>
 #define WIN32_LEAN_AND_MEAN
 #include "entity.hpp"
 #include "protocol.hpp"
@@ -131,8 +132,6 @@ void extrapolate_entity(entity_state_t &ent_state, int64_t ts)
         e.sim.initialized = true;
     };
 
-    const int64_t c_extrapolation_step_ms = 16;
-
     if (!ent_state.sim.initialized) {
         // Set simulation initial state to last snapshot
         init_ent_sim(ent_state);
@@ -144,7 +143,7 @@ void extrapolate_entity(entity_state_t &ent_state, int64_t ts)
         int64_t sim_ts;
         for (sim_ts = ent_state.history.back().ts;
              sim_ts <= last_sim_ts;
-             sim_ts += c_extrapolation_step_ms)
+             sim_ts += c_physics_tick_ms)
         {
             // @SPEED(PKiyashko): this is quite suboptimal, make better if it's
             //                    a bottleneck
@@ -159,7 +158,7 @@ void extrapolate_entity(entity_state_t &ent_state, int64_t ts)
                     my_controls_history.erase(my_controls_history.begin(), it);
                 }
             }
-            simulate_entity(ent_state.ent, (float)c_extrapolation_step_ms * 0.001f);
+            simulate_entity(ent_state.ent, (float)c_physics_tick_ms * 0.001f);
         }
 
         ent_state.sim.ts = sim_ts;
@@ -168,7 +167,7 @@ void extrapolate_entity(entity_state_t &ent_state, int64_t ts)
     putchar('\n');
 
     while (ent_state.sim.ts < ts) {
-        int64_t step = min((int64_t)c_extrapolation_step_ms, ts - ent_state.sim.ts);
+        int64_t step = min((int64_t)c_physics_tick_ms, ts - ent_state.sim.ts);
         simulate_entity(ent_state.ent, (float)step * 1e-3);
         ent_state.sim.ts += step;
     }
@@ -199,13 +198,6 @@ void on_new_entity_packet(ENetPacket *packet)
 void on_set_controlled_entity(ENetPacket *packet)
 {
     deserialize_set_controlled_entity(packet, my_entity);
-}
-
-int64_t on_sync_clock(ENetPacket *packet)
-{
-    int64_t ts = 0;
-    deserialize_sync_clock(packet, ts);
-    return ts;
 }
 
 void on_snapshot(ENetPacket *packet)
@@ -291,11 +283,7 @@ int main(int argc, const char **argv)
     SetTargetFPS(60); // Set our game to run at 60 frames-per-second
 
     const int64_t interpolation_lag_ms = 2*c_server_tick_ms;
-    int64_t delta_to_server_time       = INT64_MIN;
-
     while (!WindowShouldClose()) {
-        int64_t cur_local_ts = (int64_t)(GetTime() * 1000.0);
-
         ENetEvent event;
         while (enet_host_service(client, &event, 0) > 0) {
             switch (event.type) {
@@ -314,10 +302,6 @@ int main(int argc, const char **argv)
                 case e_server_to_client_set_controlled_entity:
                     on_set_controlled_entity(event.packet);
                     break;
-                case e_server_to_client_clock_sync: {
-                    int64_t server_time = on_sync_clock(event.packet);
-                    delta_to_server_time = server_time + server_peer->roundTripTime/2 - cur_local_ts;
-                } break;
                 case e_server_to_client_snapshot:
                     on_snapshot(event.packet);
                     break;
@@ -334,10 +318,8 @@ int main(int argc, const char **argv)
             };
         }
 
-        if (delta_to_server_time == INT64_MIN)
-          continue;
-
-        uint32_t ts = cur_local_ts + delta_to_server_time - interpolation_lag_ms;
+        int64_t cur_ts = enet_time_get();
+        int64_t ts = cur_ts - interpolation_lag_ms;
 
         if (my_entity != c_invalid_entity) {
             bool left  = IsKeyDown(KEY_LEFT);
