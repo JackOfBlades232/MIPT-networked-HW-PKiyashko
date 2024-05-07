@@ -278,7 +278,7 @@ int main(int argc, const char **argv)
         }
 
         int64_t cur_ts = enet_time_get();
-        int64_t ts = cur_ts - interpolation_lag_ms;
+        int64_t ts = cur_ts + server_peer->roundTripTime/2 - interpolation_lag_ms;
 
         if (my_entity != c_invalid_entity) {
             bool left  = IsKeyDown(KEY_LEFT);
@@ -296,8 +296,9 @@ int main(int argc, const char **argv)
                     // Send
                     send_entity_input(server_peer, my_entity, e.ent.thr, e.ent.steer);
 
-                    // Store in history (not offsetting by interp lag, it would be too early)
-                    my_controls_history.Push(controls_snapshot_t{cur_ts, e.ent.thr, e.ent.steer});
+                    // Store in history
+                    my_controls_history.Push(
+                        controls_snapshot_t{ts + interpolation_lag_ms, e.ent.thr, e.ent.steer});
                 }
 
               // Interpolate/Extrapolate/Resimulate
