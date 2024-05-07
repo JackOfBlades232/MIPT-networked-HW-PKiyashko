@@ -4,20 +4,18 @@
 #define WIN32_LEAN_AND_MEAN
 #include "entity.hpp"
 #include "protocol.hpp"
+#include "history.hpp"
 #include "shared_consts.hpp"
 
 #include "raylib.h"
 #include <enet/enet.h>
 
 #include <cassert>
-#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <cstdio>
 #include <cstdint>
-#include <iterator>
 #include <vector>
-#include <deque>
 
 struct controls_snapshot_t {
     int64_t ts;
@@ -40,11 +38,8 @@ struct entity_state_t {
         int64_t accumulated_dt, last_ts, start_ts;
         bool initialized = false;
     } sim;
-    std::deque<entity_snapshot_t> history;
+    History<entity_snapshot_t> history;
 };
-
-template <class T>
-using HistoryIterator = std::deque<T>::iterator;
 
 static ENetHost *client      = nullptr;
 static ENetPeer *server_peer = nullptr;
@@ -53,35 +48,7 @@ static bool connected        = false;
 static std::vector<entity_state_t> entities;
 
 static uint16_t my_entity = c_invalid_entity;
-std::deque<controls_snapshot_t> my_controls_history;
-
-template <class T>
-HistoryIterator<T> bin_search_in_history(std::deque<T> &history, int64_t ts)
-{
-    if (history.empty())
-        return history.end();
-
-    auto lo = history.begin();
-    auto hi = history.end() - 1;
-
-    if (ts >= hi->ts)
-        return hi;
-    else if (ts <= lo->ts)
-        return lo;
-
-    size_t dist;
-    while ((dist = std::distance(lo, hi)) > 1) {
-        auto mid = lo + dist/2;
-        if (mid->ts > ts)
-            hi = mid;
-        else if (mid->ts < ts)
-            lo = mid;
-        else
-            return mid;
-    }
-
-    return hi;
-}
+History<controls_snapshot_t> my_controls_history;
 
 void interpolate_entity(entity_state_t &ent_state, int64_t ts)
 {
@@ -89,20 +56,18 @@ void interpolate_entity(entity_state_t &ent_state, int64_t ts)
 
     ent_state.sim.initialized = false;
 
-    auto it = bin_search_in_history<entity_snapshot_t>(ent_state.history, ts);
+    auto [prev, next] = ent_state.history.FetchTwoClosest(ts);
+    assert(next); // must be <= last ts to interpolate correclty
 
-    if (it == ent_state.history.begin()) {
-        ent_state.ent.x = it->x;
-        ent_state.ent.y = it->y;
-        ent_state.ent.ori = it->ori;
-    } else if (it != ent_state.history.end()) {
-        auto prev = it-1;
-        float coeff = (float)(it->ts - ts) / (it->ts - prev->ts);
-        ent_state.ent.x = coeff*prev->x + (1.f - coeff)*it->x;
-        ent_state.ent.y = coeff*prev->y + (1.f - coeff)*it->y;
-        ent_state.ent.ori = coeff*prev->ori + (1.f - coeff)*it->ori;
-
-        ent_state.history.erase(ent_state.history.begin(), prev);
+    if (!prev) {
+        ent_state.ent.x   = next->x;
+        ent_state.ent.y   = next->y;
+        ent_state.ent.ori = next->ori;
+    } else {
+        float coeff = (float)(next->ts - ts) / (next->ts - prev->ts);
+        ent_state.ent.x = coeff*prev->x + (1.f - coeff)*next->x;
+        ent_state.ent.y = coeff*prev->y + (1.f - coeff)*next->y;
+        ent_state.ent.ori = coeff*prev->ori + (1.f - coeff)*next->ori;
     }
 }
 
@@ -111,19 +76,19 @@ void extrapolate_entity(entity_state_t &ent_state, int64_t ts)
     printf("extra");
 
     auto init_ent_sim = [](entity_state_t &e) {
-        if (e.history.empty())
+        if (e.history.Empty())
             return;
 
-        e.ent.x   = e.history.back().x;
-        e.ent.y   = e.history.back().y;
-        e.ent.ori = e.history.back().ori;
+        e.ent.x   = e.history.Back()->x;
+        e.ent.y   = e.history.Back()->y;
+        e.ent.ori = e.history.Back()->ori;
 
         if (e.ent.eid != my_entity) {
-            e.ent.thr   = e.history.back().thr;
-            e.ent.steer = e.history.back().steer;
+            e.ent.thr   = e.history.Back()->thr;
+            e.ent.steer = e.history.Back()->steer;
         }
 
-        e.sim.last_ts        = e.history.back().ts;
+        e.sim.last_ts        = e.history.Back()->ts;
         e.sim.start_ts       = e.sim.last_ts;
         e.sim.accumulated_dt = 0;
 
@@ -133,11 +98,11 @@ void extrapolate_entity(entity_state_t &ent_state, int64_t ts)
     if (!ent_state.sim.initialized) {
         // Set simulation initial state to last snapshot
         init_ent_sim(ent_state);
-    } else if (ent_state.history.back().ts > ent_state.sim.start_ts) {
+    } else if (ent_state.history.Back()->ts > ent_state.sim.start_ts) {
         // Resimulate from last snapshot
         printf(" resim");
         init_ent_sim(ent_state);
-        ent_state.history.erase(ent_state.history.begin(), ent_state.history.end()-1);
+        ent_state.history.DropAllExceptLast();
     }
 
     putchar('\n');
@@ -148,15 +113,13 @@ void extrapolate_entity(entity_state_t &ent_state, int64_t ts)
     ent_state.sim.accumulated_dt -= nticks * c_physics_tick_ms;
     for (int i = 0; i < nticks; ++i) {
         if (ent_state.ent.eid == my_entity) {
-            auto it = bin_search_in_history<controls_snapshot_t>(
-                my_controls_history,
-                ent_state.sim.last_ts + i * c_physics_tick_ms);
+            const controls_snapshot_t *controls =
+                my_controls_history.FetchFirstAfter(ent_state.sim.last_ts +
+                                                    i * c_physics_tick_ms);
 
-            if (it != my_controls_history.end()) {
-                ent_state.ent.thr   = it->thr;
-                ent_state.ent.steer = it->steer;
-
-                my_controls_history.erase(my_controls_history.begin(), it);
+            if (controls) {
+                ent_state.ent.thr   = controls->thr;
+                ent_state.ent.steer = controls->steer;
             }
         }
 
@@ -168,10 +131,10 @@ void extrapolate_entity(entity_state_t &ent_state, int64_t ts)
 
 void calculate_entity_state(entity_state_t &ent_state, int64_t ts)
 {
-    if (ent_state.history.empty())
+    if (ent_state.history.Empty())
         return;
 
-    if (ts <= ent_state.history.back().ts)
+    if (ts <= ent_state.history.Back()->ts)
         interpolate_entity(ent_state, ts);
     else
         extrapolate_entity(ent_state, ts);
@@ -206,8 +169,10 @@ void on_snapshot(ENetPacket *packet)
 
     // TODO: Direct adressing, of course!
     for (entity_state_t &e : entities)
-        if (e.ent.eid == eid)
-            e.history.push_back(entity_snapshot_t{ts, x, y, ori, thr, steer});
+        if (e.ent.eid == eid) {
+            e.history.Push(entity_snapshot_t{ts, x, y, ori, thr, steer});
+            break;
+        }
 }
 
 void on_remove_entity(ENetPacket *packet)
@@ -275,7 +240,7 @@ int main(int argc, const char **argv)
 
     SetTargetFPS(60); // Set our game to run at 60 frames-per-second
 
-    const int64_t interpolation_lag_ms = 2*c_server_tick_ms;
+    const int64_t interpolation_lag_ms = c_server_tick_ms;
     while (!WindowShouldClose()) {
         ENetEvent event;
         while (enet_host_service(client, &event, 0) > 0) {
@@ -331,7 +296,7 @@ int main(int argc, const char **argv)
                     send_entity_input(server_peer, my_entity, e.ent.thr, e.ent.steer);
 
                     // Store in history
-                    my_controls_history.push_back(controls_snapshot_t{ts, e.ent.thr, e.ent.steer});
+                    my_controls_history.Push(controls_snapshot_t{ts, e.ent.thr, e.ent.steer});
                 }
 
               // Interpolate/Extrapolate/Resimulate
