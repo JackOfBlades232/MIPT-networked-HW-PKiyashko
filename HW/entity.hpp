@@ -19,4 +19,10 @@ struct entity_t {
     uint16_t eid = c_invalid_entity;
 };
 
+struct controls_snapshot_t {
+    int64_t ts;
+    float thr;
+    float steer;
+};
+
 void simulate_entity(entity_t &e, float dt);

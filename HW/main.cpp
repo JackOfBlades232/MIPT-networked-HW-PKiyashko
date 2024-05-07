@@ -17,12 +17,6 @@
 #include <cstdint>
 #include <vector>
 
-struct controls_snapshot_t {
-    int64_t ts;
-    float thr;
-    float steer;
-};
-
 struct entity_snapshot_t {
     int64_t ts;
     float x;
@@ -32,8 +26,7 @@ struct entity_snapshot_t {
     float steer;
 };
 
-struct entity_state_t {
-    entity_t ent;
+struct clientside_entity_t : entity_t {
     struct {
         int64_t accumulated_dt, last_ts, start_ts;
         bool initialized = false;
@@ -45,12 +38,12 @@ static ENetHost *client      = nullptr;
 static ENetPeer *server_peer = nullptr;
 static bool connected        = false;
 
-static std::vector<entity_state_t> entities;
+static std::vector<clientside_entity_t> entities;
 
 static uint16_t my_entity = c_invalid_entity;
 History<controls_snapshot_t> my_controls_history;
 
-void interpolate_entity(entity_state_t &ent_state, int64_t ts)
+void interpolate_entity(clientside_entity_t &ent_state, int64_t ts)
 {
     printf("inter\n");
 
@@ -60,34 +53,34 @@ void interpolate_entity(entity_state_t &ent_state, int64_t ts)
     assert(next); // must be <= last ts to interpolate correclty
 
     if (!prev || prev->ts == next->ts) {
-        ent_state.ent.x   = next->x;
-        ent_state.ent.y   = next->y;
-        ent_state.ent.ori = next->ori;
+        ent_state.x   = next->x;
+        ent_state.y   = next->y;
+        ent_state.ori = next->ori;
     } else {
         float coeff = (float)(next->ts - ts) / (next->ts - prev->ts);
-        ent_state.ent.x = coeff*prev->x + (1.f - coeff)*next->x;
-        ent_state.ent.y = coeff*prev->y + (1.f - coeff)*next->y;
-        ent_state.ent.ori = coeff*prev->ori + (1.f - coeff)*next->ori;
+        ent_state.x = coeff*prev->x + (1.f - coeff)*next->x;
+        ent_state.y = coeff*prev->y + (1.f - coeff)*next->y;
+        ent_state.ori = coeff*prev->ori + (1.f - coeff)*next->ori;
     }
 }
 
-void extrapolate_entity(entity_state_t &ent_state, int64_t ts)
+void extrapolate_entity(clientside_entity_t &ent_state, int64_t ts)
 {
     printf("extra");
 
-    auto init_ent_sim = [](entity_state_t &e) {
+    auto init_ent_sim = [](clientside_entity_t &e) {
         if (e.history.Empty())
             return;
 
         const entity_snapshot_t *last = e.history.FetchBack();
 
-        e.ent.x   = last->x;
-        e.ent.y   = last->y;
-        e.ent.ori = last->ori;
+        e.x   = last->x;
+        e.y   = last->y;
+        e.ori = last->ori;
 
-        if (e.ent.eid != my_entity) {
-            e.ent.thr   = last->thr;
-            e.ent.steer = last->steer;
+        if (e.eid != my_entity) {
+            e.thr   = last->thr;
+            e.steer = last->steer;
         }
 
         e.sim.last_ts        = last->ts;
@@ -113,24 +106,24 @@ void extrapolate_entity(entity_state_t &ent_state, int64_t ts)
     int nticks = ent_state.sim.accumulated_dt / c_physics_tick_ms;
     ent_state.sim.accumulated_dt -= nticks * c_physics_tick_ms;
     for (int i = 0; i < nticks; ++i) {
-        if (ent_state.ent.eid == my_entity) {
+        if (ent_state.eid == my_entity) {
             const controls_snapshot_t *controls =
                 my_controls_history.FetchLastBefore(ent_state.sim.last_ts +
                                                     i * c_physics_tick_ms);
 
             if (controls) {
-                ent_state.ent.thr   = controls->thr;
-                ent_state.ent.steer = controls->steer;
+                ent_state.thr   = controls->thr;
+                ent_state.steer = controls->steer;
             }
         }
 
-        simulate_entity(ent_state.ent, PHYSICS_TICK_SEC);
+        simulate_entity(ent_state, PHYSICS_TICK_SEC);
     }
 
     ent_state.sim.last_ts = ts;
 }
 
-void calculate_entity_state(entity_state_t &ent_state, int64_t ts)
+void calculate_entity_state(clientside_entity_t &ent_state, int64_t ts)
 {
     if (ent_state.history.Empty())
         return;
@@ -146,10 +139,10 @@ void on_new_entity_packet(ENetPacket *packet)
     entity_t new_entity;
     deserialize_new_entity(packet, new_entity);
     // TODO: Direct adressing, of course!
-    for (const entity_state_t &e : entities)
-        if (e.ent.eid == new_entity.eid)
+    for (const clientside_entity_t &e : entities)
+        if (e.eid == new_entity.eid)
             return; // don't need to do anything, we already have entity
-    entities.push_back(entity_state_t{new_entity});
+    entities.push_back(clientside_entity_t{new_entity});
 }
 
 void on_set_controlled_entity(ENetPacket *packet)
@@ -169,8 +162,8 @@ void on_snapshot(ENetPacket *packet)
     deserialize_snapshot(packet, ts, eid, x, y, ori, thr, steer);
 
     // TODO: Direct adressing, of course!
-    for (entity_state_t &e : entities)
-        if (e.ent.eid == eid) {
+    for (clientside_entity_t &e : entities)
+        if (e.eid == eid) {
             e.history.Push(entity_snapshot_t{ts, x, y, ori, thr, steer});
             break;
         }
@@ -181,7 +174,7 @@ void on_remove_entity(ENetPacket *packet)
     uint16_t eid = c_invalid_entity;
     deserialize_remove_entity(packet, eid);
     for (auto it = entities.begin(); it != entities.end(); ++it)
-        if (it->ent.eid == eid) {
+        if (it->eid == eid) {
             entities.erase(it);
             break;
         }
@@ -241,7 +234,7 @@ int main(int argc, const char **argv)
 
     SetTargetFPS(60); // Set our game to run at 60 frames-per-second
 
-    const int64_t interpolation_lag_ms = c_server_tick_ms*2;
+    const int64_t interpolation_lag_ms = c_server_tick_ms;
     while (!WindowShouldClose()) {
         ENetEvent event;
         while (enet_host_service(client, &event, 0) > 0) {
@@ -286,19 +279,19 @@ int main(int argc, const char **argv)
             bool up    = IsKeyDown(KEY_UP);
             bool down  = IsKeyDown(KEY_DOWN);
             // TODO: Direct adressing, of course!
-            for (entity_state_t &e : entities) {
+            for (clientside_entity_t &e : entities) {
                 // Send controls
-                if (e.ent.eid == my_entity) {
+                if (e.eid == my_entity) {
                     // Update
-                    e.ent.thr   = (up ? 1.f : 0.f) + (down ? -1.f : 0.f);
-                    e.ent.steer = (left ? -1.f : 0.f) + (right ? 1.f : 0.f);
+                    e.thr   = (up ? 1.f : 0.f) + (down ? -1.f : 0.f);
+                    e.steer = (left ? -1.f : 0.f) + (right ? 1.f : 0.f);
 
                     // Send
-                    send_entity_input(server_peer, my_entity, e.ent.thr, e.ent.steer);
+                    send_entity_input(server_peer, my_entity, cur_ts, e.thr, e.steer);
 
                     // Store in history
                     my_controls_history.Push(
-                        controls_snapshot_t{ts + interpolation_lag_ms, e.ent.thr, e.ent.steer});
+                        controls_snapshot_t{cur_ts, e.thr, e.steer});
                 }
 
               // Interpolate/Extrapolate/Resimulate
@@ -309,10 +302,10 @@ int main(int argc, const char **argv)
         BeginDrawing();
         ClearBackground(GRAY);
         BeginMode2D(camera);
-        for (const entity_state_t &e : entities) {
-            const Rectangle rect = {e.ent.x, e.ent.y, 3.f, 1.f};
+        for (const clientside_entity_t &e : entities) {
+            const Rectangle rect = {e.x, e.y, 3.f, 1.f};
             DrawRectanglePro(
-                rect, {0.f, 0.5f}, e.ent.ori * 180.f / PI, GetColor(e.ent.color));
+                rect, {0.f, 0.5f}, e.ori * 180.f / PI, GetColor(e.color));
         }
 
         EndMode2D();

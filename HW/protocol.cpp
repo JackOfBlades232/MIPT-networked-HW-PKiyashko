@@ -77,17 +77,19 @@ void send_remove_entity(ENetPeer *peer, uint16_t eid)
     enet_peer_send(peer, 0, packet);
 }
 
-void send_entity_input(ENetPeer *peer, uint16_t eid, float thr, float steer)
+void send_entity_input(ENetPeer *peer, uint16_t eid, int64_t time, float thr, float steer)
 {
     if (peer->state != ENET_PEER_STATE_CONNECTED)
         return;
 
     ENetPacket *packet = enet_packet_create(nullptr, 
-                                            sizeof(message_type_t) + sizeof(eid) + sizeof(thr) + sizeof(steer),
+                                            sizeof(message_type_t) + sizeof(eid) +
+                                            sizeof(time) + sizeof(thr) + sizeof(steer),
                                             ENET_PACKET_FLAG_RELIABLE);
     Bitstream bs = create_packet_writer_bs(packet);
     bs.Write(e_client_to_server_input);
     bs.Write(eid);
+    bs.Write(time);
     bs.Write(thr);
     bs.Write(steer);
 
@@ -145,11 +147,12 @@ void deserialize_remove_entity(ENetPacket *packet, uint16_t &eid)
     bs.Read(eid);
 }
 
-void deserialize_entity_input(ENetPacket *packet, uint16_t &eid, float &thr, float &steer)
+void deserialize_entity_input(ENetPacket *packet, uint16_t &eid, int64_t &time, float &thr, float &steer)
 {
     Bitstream bs = create_packet_reader_bs(packet);
     bs.Skip<message_type_t>();
     bs.Read(eid);
+    bs.Read(time);
     bs.Read(thr);
     bs.Read(steer);
 }

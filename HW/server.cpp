@@ -1,5 +1,6 @@
 #include "entity.hpp"
 #include "protocol.hpp"
+#include "history.hpp"
 #include "shared_consts.hpp"
 
 #include <cassert>
@@ -13,7 +14,11 @@
 #include <thread>
 #include <chrono>
 
-static std::vector<entity_t> entities;
+struct serverside_entity_t : entity_t {
+    History<controls_snapshot_t> controls;
+};
+
+static std::vector<serverside_entity_t> entities;
 static std::map<uint16_t, ENetPeer *> controlled_map;
 
 void on_join(ENetPacket *packet, ENetPeer *peer, ENetHost *host)
@@ -38,7 +43,7 @@ void on_join(ENetPacket *packet, ENetPeer *peer, ENetHost *host)
         0.f, 0.f, 
         new_eid
     };
-    entities.push_back(ent);
+    entities.push_back(serverside_entity_t{ent, {}});
 
     controlled_map[new_eid] = peer;
 
@@ -82,14 +87,15 @@ void on_disconnect(ENetPeer *peer, ENetHost *host)
 
 void on_input(ENetPacket *packet)
 {
+    int64_t ts;
     uint16_t eid = c_invalid_entity;
     float thr    = 0.f;
     float steer  = 0.f;
-    deserialize_entity_input(packet, eid, thr, steer);
-    for (entity_t &e : entities)
+    deserialize_entity_input(packet, eid, ts, thr, steer);
+    for (serverside_entity_t &e : entities)
         if (e.eid == eid) {
-            e.thr   = thr;
-            e.steer = steer;
+            e.controls.Push(controls_snapshot_t{ts, thr, steer});
+            break;
         }
 }
 
@@ -158,10 +164,17 @@ int main(int argc, const char **argv)
 
         int nticks = accumulated_dt / c_physics_tick_ms;
         accumulated_dt -= c_physics_tick_ms * nticks;
-        for (entity_t &e : entities) {
+        for (serverside_entity_t &e : entities) {
             // simulate
-            for (int i = 0; i < nticks; ++i)
+            int64_t sim_time = cur_time - controlled_map.at(e.eid)->roundTripTime/2;
+            for (int i = 0; i < nticks; ++i) {
+                if (const controls_snapshot_t* controls = e.controls.FetchLastBefore(sim_time + i * c_physics_tick_ms)) {
+                    e.thr   = controls->thr;
+                    e.steer = controls->steer;
+                }
+
                 simulate_entity(e, PHYSICS_TICK_SEC);
+            }
 
             // send
             for (size_t i = 0; i < server->peerCount; ++i) {
