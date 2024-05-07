@@ -59,7 +59,7 @@ void interpolate_entity(entity_state_t &ent_state, int64_t ts)
     auto [prev, next] = ent_state.history.FetchTwoClosest(ts);
     assert(next); // must be <= last ts to interpolate correclty
 
-    if (!prev) {
+    if (!prev || prev->ts == next->ts) {
         ent_state.ent.x   = next->x;
         ent_state.ent.y   = next->y;
         ent_state.ent.ori = next->ori;
@@ -79,16 +79,18 @@ void extrapolate_entity(entity_state_t &ent_state, int64_t ts)
         if (e.history.Empty())
             return;
 
-        e.ent.x   = e.history.Back()->x;
-        e.ent.y   = e.history.Back()->y;
-        e.ent.ori = e.history.Back()->ori;
+        const entity_snapshot_t *last = e.history.FetchBack();
+
+        e.ent.x   = last->x;
+        e.ent.y   = last->y;
+        e.ent.ori = last->ori;
 
         if (e.ent.eid != my_entity) {
-            e.ent.thr   = e.history.Back()->thr;
-            e.ent.steer = e.history.Back()->steer;
+            e.ent.thr   = last->thr;
+            e.ent.steer = last->steer;
         }
 
-        e.sim.last_ts        = e.history.Back()->ts;
+        e.sim.last_ts        = last->ts;
         e.sim.start_ts       = e.sim.last_ts;
         e.sim.accumulated_dt = 0;
 
@@ -102,7 +104,6 @@ void extrapolate_entity(entity_state_t &ent_state, int64_t ts)
         // Resimulate from last snapshot
         printf(" resim");
         init_ent_sim(ent_state);
-        ent_state.history.DropAllExceptLast();
     }
 
     putchar('\n');
@@ -114,7 +115,7 @@ void extrapolate_entity(entity_state_t &ent_state, int64_t ts)
     for (int i = 0; i < nticks; ++i) {
         if (ent_state.ent.eid == my_entity) {
             const controls_snapshot_t *controls =
-                my_controls_history.FetchFirstAfter(ent_state.sim.last_ts +
+                my_controls_history.FetchLastBefore(ent_state.sim.last_ts +
                                                     i * c_physics_tick_ms);
 
             if (controls) {
@@ -240,7 +241,7 @@ int main(int argc, const char **argv)
 
     SetTargetFPS(60); // Set our game to run at 60 frames-per-second
 
-    const int64_t interpolation_lag_ms = c_server_tick_ms;
+    const int64_t interpolation_lag_ms = c_server_tick_ms*2;
     while (!WindowShouldClose()) {
         ENetEvent event;
         while (enet_host_service(client, &event, 0) > 0) {
@@ -295,8 +296,8 @@ int main(int argc, const char **argv)
                     // Send
                     send_entity_input(server_peer, my_entity, e.ent.thr, e.ent.steer);
 
-                    // Store in history
-                    my_controls_history.Push(controls_snapshot_t{ts, e.ent.thr, e.ent.steer});
+                    // Store in history (not offsetting by interp lag, it would be too early)
+                    my_controls_history.Push(controls_snapshot_t{cur_ts, e.ent.thr, e.ent.steer});
                 }
 
               // Interpolate/Extrapolate/Resimulate

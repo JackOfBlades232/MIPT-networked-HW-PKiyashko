@@ -95,6 +95,8 @@ void on_input(ENetPacket *packet)
 
 int main(int argc, const char **argv)
 {
+    srand(0xFEFECC);
+
     if (enet_initialize() != 0) {
         printf("Cannot init ENet");
         return 1;

@@ -23,23 +23,26 @@ public:
 
     const T *Back() const { return Empty() ? nullptr : &m_items.back(); }
 
-    void DropAllExceptLast() { Cleanup(m_items.end()-1); }
+    const T *FetchBack() { 
+        Cleanup(m_items.end());
+        return Back();
+    }
 
     const T *FetchFirstAfter(int64_t ts) {
         auto it = BinSearch(ts);
         if (it == m_items.end() || it->ts < ts)
             return nullptr;
 
-        Cleanup(it-1);
+        Cleanup(it);
         return &(*it);
     }
 
     const T *FetchLastBefore(int64_t ts) {
         auto it = BinSearch(ts);
-        if (it == m_items.end() || (it == m_items.begin() && it->ts > ts))
+        if (it == m_items.end() || m_items.front().ts > ts)
             return nullptr;
 
-        Cleanup(it-1);
+        Cleanup(it);
         return it->ts == ts ? &(*it) : &(*(it-1));
     }
 
@@ -62,13 +65,15 @@ public:
             res.second = &(*it);
         }
 
-        Cleanup(it-1);
+        Cleanup(it);
         return res;
     }
 
 private:
-    void Cleanup(Iterator up_to) 
-        { m_items.erase(m_items.begin(), up_to); }
+    void Cleanup(Iterator second_after) {
+        if (second_after != m_items.begin()) 
+            m_items.erase(m_items.begin(), second_after-1);
+    }
 
     Iterator BinSearch(int64_t ts) {
         if (m_items.empty())
