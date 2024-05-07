@@ -1,10 +1,12 @@
 // initial skeleton is a clone from https://github.com/jpcy/bgfx-minimal-example
 //
+#include <deque>
 #include <stdio.h>
 #define WIN32_LEAN_AND_MEAN
 #include "entity.hpp"
 #include "protocol.hpp"
 #include "history.hpp"
+#include "polling_service.hpp"
 #include "shared_consts.hpp"
 
 #include "raylib.h"
@@ -235,9 +237,16 @@ int main(int argc, const char **argv)
     SetTargetFPS(60); // Set our game to run at 60 frames-per-second
 
     const int64_t interpolation_lag_ms = c_server_tick_ms;
+
+    PollingService polling_service(client);
+    polling_service.Run();
+
     while (!WindowShouldClose()) {
-        ENetEvent event;
-        while (enet_host_service(client, &event, 0) > 0) {
+        std::deque<ENetEvent> events = polling_service.FetchEvents();
+        while (!events.empty()) {
+            ENetEvent event = events.back();
+            events.pop_back();
+
             switch (event.type) {
             case ENET_EVENT_TYPE_CONNECT:
                 printf("Connection with %x:%u established\n",

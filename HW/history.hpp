@@ -43,7 +43,7 @@ public:
             return nullptr;
 
         Cleanup(it);
-        return it->ts == ts ? &(*it) : &(*(it-1));
+        return it->ts <= ts ? &(*it) : &(*(it-1));
     }
 
     std::pair<const T *, const T *> FetchTwoClosest(int64_t ts) {

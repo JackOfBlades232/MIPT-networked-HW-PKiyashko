@@ -1,6 +1,7 @@
 #include "entity.hpp"
 #include "protocol.hpp"
 #include "history.hpp"
+#include "polling_service.hpp"
 #include "shared_consts.hpp"
 
 #include <cassert>
@@ -121,13 +122,19 @@ int main(int argc, const char **argv)
         return 1;
     }
 
+    PollingService polling_service(server);
+    polling_service.Run();
+
     int64_t last_time      = enet_time_get();
     int64_t accumulated_dt = 0;
     while (true) {
         int64_t pre_event_loop_time = enet_time_get();
 
-        ENetEvent event;
-        while (enet_host_service(server, &event, 0) > 0) {
+        std::deque<ENetEvent> events = polling_service.FetchEvents();
+        while (!events.empty()) {
+            ENetEvent event = events.back();
+            events.pop_back();
+
             switch (event.type) {
             case ENET_EVENT_TYPE_CONNECT:
                 printf("Connection with %x:%u established\n",
