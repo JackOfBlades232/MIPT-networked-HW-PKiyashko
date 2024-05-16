@@ -21,9 +21,6 @@ public:
     PollingService(const PollingService &) = delete;
     PollingService &operator=(const PollingService &) = delete;
 
-    PollingService(PollingService &&) = default;
-    PollingService &operator=(PollingService &&) = default;
-
     void Run() {
         assert(m_host);
         m_polling_thread = std::jthread([this]() {

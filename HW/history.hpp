@@ -5,7 +5,7 @@
 
 template <class T> // must have an int64_t field called ts
 class History {
-    using Iterator = std::deque<T>::iterator;
+    using Iterator = typename std::deque<T>::iterator;
 
     std::deque<T> m_items;
 
