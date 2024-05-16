@@ -6,6 +6,7 @@
 #include <cfloat>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 
 static Bitstream create_packet_writer_bs(ENetPacket *packet)
 {
@@ -90,13 +91,13 @@ void send_entity_input(ENetPeer *peer, uint16_t eid, int64_t time, float thr, fl
 
     ENetPacket *packet = enet_packet_create(nullptr, 
                                             sizeof(message_type_t) + sizeof(eid) +
-                                            Bitstream::GetPackedUint64Size((uint64_t)time) +
+                                            Bitstream::GetPackedUint64Size(time) +
                                             sizeof(packed_controls),
                                             ENET_PACKET_FLAG_RELIABLE);
     Bitstream bs = create_packet_writer_bs(packet);
     bs.Write(e_client_to_server_input);
     bs.Write(eid);
-    bs.WritePackedUint64((uint64_t)time);
+    bs.WritePackedInt64(time);
     bs.Write(packed_controls);
 
     enet_peer_send(peer, 1, packet);
@@ -123,7 +124,7 @@ void send_snapshot(ENetPeer *peer, int64_t time, uint16_t eid, float x,
 
     ENetPacket *packet = enet_packet_create(nullptr,
                                             sizeof(message_type_t) +
-                                            Bitstream::GetPackedUint64Size((uint64_t)time) +
+                                            Bitstream::GetPackedUint64Size(time) +
                                             sizeof(eid) +
                                             Bitstream::GetPackedUint64Size(packed_transform.GetPackedVal()) +
                                             sizeof(packed_controls),
@@ -131,9 +132,9 @@ void send_snapshot(ENetPeer *peer, int64_t time, uint16_t eid, float x,
 
     Bitstream bs = create_packet_writer_bs(packet);
     bs.Write(e_server_to_client_snapshot);
-    bs.WritePackedUint64((uint64_t)time);
+    bs.WritePackedInt64(time);
     bs.Write(eid);
-    bs.WritePackedUint64(packed_transform.GetPackedVal());
+    bs.WritePackedInt64(packed_transform.GetPackedVal());
     bs.Write(packed_controls);
 
     enet_peer_send(peer, 1, packet);
@@ -172,7 +173,7 @@ void deserialize_entity_input(ENetPacket *packet, uint16_t &eid, int64_t &time, 
     Bitstream bs = create_packet_reader_bs(packet);
     bs.Skip<message_type_t>();
     bs.Read(eid);
-    bs.ReadPackedUint64((uint64_t &)time);
+    bs.ReadPackedInt64(time);
     bs.Read(packed_controls);
 
     float2 controls = packed_controls.Unpack(-1.f, 1.f);
@@ -188,9 +189,9 @@ void deserialize_snapshot(ENetPacket *packet, int64_t &time, uint16_t &eid,
 
     Bitstream bs = create_packet_reader_bs(packet);
     bs.Skip<message_type_t>();
-    bs.ReadPackedUint64((uint64_t &)time);
+    bs.ReadPackedInt64(time);
     bs.Read(eid);
-    bs.ReadPackedUint64(packed_transform_as_uint);
+    bs.ReadPackedInt64(packed_transform_as_uint);
     bs.Read(packed_controls);
 
     PackedFloat3<uint64_t, 24, 24, 16> packed_transform(packed_transform_as_uint);

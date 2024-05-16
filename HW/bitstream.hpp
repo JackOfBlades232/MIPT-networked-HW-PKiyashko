@@ -24,7 +24,7 @@ private:
         e_uint64 = 0b11,
     };
 
-    enum {
+    enum : uint64_t {
         c_uint8_limit  = std::numeric_limits<uint8_t>::max(),
         c_uint16_limit = std::numeric_limits<uint16_t>::max(),
         c_uint32_limit = std::numeric_limits<uint32_t>::max(),
@@ -64,21 +64,26 @@ public:
         m_mem_size -= sizeof(T);
     }
 
-    void WritePackedUint32(uint32_t val) {
+    template <class TInt32>
+    void WritePackedInt32(TInt32 val) {
+        static_assert(sizeof(TInt32) == 4);
         assert(m_type == Type::eWriter);
+        uint32_t written_val = *(uint32_t *)&val;
         if (val <= c_uint8_limit) {
             Write(e_uint8);
-            Write<uint8_t>(val);
-        } else if (val <= c_uint16_limit) {
+            Write<uint8_t>(written_val);
+        } else if (written_val <= c_uint16_limit) {
             Write(e_uint16);
-            Write<uint16_t>(val);
+            Write<uint16_t>(written_val);
         } else {
             Write(e_uint32);
-            Write<uint32_t>(val);
+            Write<uint32_t>(written_val);
         }
     }
 
-    void ReadPackedUint32(uint32_t &out) {
+    template <class TInt32>
+    void ReadPackedInt32(TInt32 &out) {
+        static_assert(sizeof(TInt32) == 4);
         assert(m_type == Type::eReader);
         uint_type_t tag;
         Read(tag);
@@ -86,33 +91,45 @@ public:
         case e_uint8: {
             uint8_t val;
             Read(val);
-            out = (uint32_t)val;
+            out = (TInt32)val;
         } break;
         case e_uint16: {
             uint16_t val;
             Read(val);
-            out = (uint32_t)val;
+            out = (TInt32)val;
         } break;
         case e_uint32: {
             uint32_t val;
             Read(val);
-            out = (uint32_t)val;
+            out = (TInt32)val;
         } break;
         case e_uint64: assert(0);
         }
     }
 
-    void WritePackedUint64(uint64_t val) {
+    template <class TInt64>
+    void WritePackedInt64(TInt64 val) {
+        static_assert(sizeof(TInt64) == 8);
         assert(m_type == Type::eWriter);
-        if (val <= c_uint32_limit)
-            WritePackedUint32(val);
-        else {
+        uint64_t written_val = *(uint64_t *)&val;
+        if (written_val <= c_uint8_limit) {
+            Write(e_uint8);
+            Write<uint8_t>(written_val);
+        } else if (written_val <= c_uint16_limit) {
+            Write(e_uint16);
+            Write<uint16_t>(written_val);
+        } else if (written_val <= c_uint32_limit) {
+            Write(e_uint32);
+            Write<uint32_t>(written_val);
+        } else {
             Write(e_uint64);
-            Write<uint64_t>(val);
+            Write<uint64_t>(written_val);
         }
     }
 
-    void ReadPackedUint64(uint64_t &out) {
+    template <class TInt64>
+    void ReadPackedInt64(TInt64 &out) {
+        static_assert(sizeof(TInt64) == 8);
         assert(m_type == Type::eReader);
         uint_type_t tag;
         Read(tag);
@@ -120,38 +137,48 @@ public:
         case e_uint8: {
             uint8_t val;
             Read(val);
-            out = (uint64_t)val;
+            out = (TInt64)val;
         } break;
         case e_uint16: {
             uint16_t val;
             Read(val);
-            out = (uint64_t)val;
+            out = (TInt64)val;
         } break;
         case e_uint32: {
             uint32_t val;
             Read(val);
-            out = (uint64_t)val;
+            out = (TInt64)val;
         } break;
         case e_uint64: {
             uint64_t val;
             Read(val);
-            out = (uint64_t)val;
+            out = (TInt64)val;
         } break;
         }
     }
 
-    static inline int GetPackedUint32Size(uint32_t val) {
-        if (val <= c_uint8_limit)
+    template <class TInt32>
+    static inline int GetPackedUint32Size(TInt32 val) {
+        static_assert(sizeof(TInt32) == 4);
+        uint32_t written_val = *(uint32_t *)&val;
+        if (written_val <= c_uint8_limit)
             return 2;
-        else if (val <= c_uint16_limit)
+        else if (written_val <= c_uint16_limit)
             return 3;
         else
             return 5;
     }
 
-    static inline int GetPackedUint64Size(uint64_t val) {
-        if (val <= c_uint32_limit)
-            return GetPackedUint32Size(val);
+    template <class TInt64>
+    static inline int GetPackedUint64Size(TInt64 val) {
+        static_assert(sizeof(TInt64) == 8);
+        uint64_t written_val = *(uint64_t *)&val;
+        if (written_val <= c_uint8_limit)
+            return 2;
+        else if (written_val <= c_uint16_limit)
+            return 3;
+        else if (written_val <= c_uint32_limit)
+            return 5;
         else
             return 9;
     }
