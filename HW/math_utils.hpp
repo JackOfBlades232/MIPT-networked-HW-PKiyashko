@@ -1,6 +1,8 @@
 #pragma once
 #include <cmath>
 
+#define F_PI 3.14159265359f
+
 struct float2 {
     float x, y;
 };

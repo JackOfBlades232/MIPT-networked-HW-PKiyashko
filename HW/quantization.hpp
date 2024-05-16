@@ -1,9 +1,11 @@
 #pragma once
 #include "math_utils.hpp"
-
 #include <cassert>
+#include <limits>
 
-#define CHECK_NUM_BITS(_type, _num_bits) static_assert(((_type)1 << (_num_bits-1)) < (~((_type)0)))
+// @TODO: assert that sizeof(T) == sizeof(Packed...<T, ...>) for every type
+
+#define CHECK_NUM_BITS(_type, _num_bits) static_assert(((_type)1 << (_num_bits-1)) < std::numeric_limits<_type>::max())
 
 template <class T>
 constexpr T first_bits_mask(int num_bits)
@@ -36,6 +38,7 @@ class PackedFloat {
 public:
     PackedFloat(float val, float lo, float hi) { Pack(val, lo, hi); }
     PackedFloat(T packed_val) : m_packed_val(packed_val) {}
+    PackedFloat() = default;
 
     void Pack(float val, float lo, float hi) { m_packed_val = pack_float<T>(val, lo, hi, t_num_bits); }
     float Unpack(float lo, float hi) { return unpack_float(m_packed_val, lo, hi, t_num_bits); }
@@ -51,6 +54,7 @@ public:
     PackedFloat2(float2 val, float2 x_lohi, float2 y_lohi) { Pack(val, x_lohi, y_lohi); }
     PackedFloat2(float2 val, float lo, float hi)           { Pack(val, lo, hi); }
     PackedFloat2(T packed_val) : m_packed_val(packed_val) {}
+    PackedFloat2() = default;
 
     void Pack(float2 val, float2 x_lohi, float2 y_lohi) {
         m_packed_val =
@@ -78,6 +82,7 @@ public:
     PackedFloat3(float3 val, float2 x_lohi, float2 y_lohi, float2 z_lohi) { Pack(val, x_lohi, y_lohi, z_lohi); }
     PackedFloat3(float3 val, float lo, float hi)                          { Pack(val, lo, hi); }
     PackedFloat3(T packed_val) : m_packed_val(packed_val) {}
+    PackedFloat3() = default;
 
     void Pack(float3 val, float2 x_lohi, float2 y_lohi, float2 z_lohi) {
         m_packed_val =
@@ -96,3 +101,6 @@ public:
     }
     float3 Unpack(float lo, float hi) { return Unpack(float2{lo, hi}, float2{lo, hi}, float2{lo, hi}); }
 };
+
+#undef CHECK_NUM_BITS
+#undef CHECK_SIZE

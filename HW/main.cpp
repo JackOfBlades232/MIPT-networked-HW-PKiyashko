@@ -1,13 +1,12 @@
 // initial skeleton is a clone from https://github.com/jpcy/bgfx-minimal-example
 //
-#include <deque>
-#include <stdio.h>
 #define WIN32_LEAN_AND_MEAN
 #include "entity.hpp"
 #include "protocol.hpp"
 #include "history.hpp"
 #include "polling_service.hpp"
 #include "shared_consts.hpp"
+#include "math_utils.hpp"
 
 #include "raylib.h"
 #include <enet/enet.h>
@@ -17,7 +16,9 @@
 #include <cstdlib>
 #include <cstdio>
 #include <cstdint>
+#include <cmath>
 #include <vector>
+#include <deque>
 
 struct entity_snapshot_t {
     int64_t ts;
@@ -62,7 +63,12 @@ void interpolate_entity(clientside_entity_t &ent_state, int64_t ts)
         float coeff = (float)(next->ts - ts) / (next->ts - prev->ts);
         ent_state.x = coeff*prev->x + (1.f - coeff)*next->x;
         ent_state.y = coeff*prev->y + (1.f - coeff)*next->y;
-        ent_state.ori = coeff*prev->ori + (1.f - coeff)*next->ori;
+
+        float prev_ori = prev->ori;
+        float next_ori = next->ori;
+        if (fabsf(prev_ori - next_ori) > F_PI)
+            (prev_ori < 0.f ? prev_ori : next_ori) += 2.f * F_PI;
+        ent_state.ori = coeff*prev_ori + (1.f - coeff)*next_ori;
     }
 }
 
