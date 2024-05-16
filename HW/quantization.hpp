@@ -41,7 +41,9 @@ public:
     PackedFloat() = default;
 
     void Pack(float val, float lo, float hi) { m_packed_val = pack_float<T>(val, lo, hi, t_num_bits); }
-    float Unpack(float lo, float hi) { return unpack_float(m_packed_val, lo, hi, t_num_bits); }
+    float Unpack(float lo, float hi) const { return unpack_float(m_packed_val, lo, hi, t_num_bits); }
+
+    T GetPackedVal() const { return m_packed_val; }
 };
 
 template <class T, int t_x_num_bits, int t_y_num_bits>
@@ -63,13 +65,15 @@ public:
     }
     void Pack(float2 val, float lo, float hi) { Pack(val, float2{lo, hi}, float2{lo, hi}); }
 
-    float2 Unpack(float2 x_lohi, float2 y_lohi) {
+    float2 Unpack(float2 x_lohi, float2 y_lohi) const {
         return float2{
             unpack_float(m_packed_val >> t_y_num_bits, x_lohi.x, x_lohi.y, t_x_num_bits),
             unpack_float(m_packed_val & first_bits_mask<T>(t_y_num_bits), y_lohi.x, y_lohi.y, t_y_num_bits),
         };
     }
-    float2 Unpack(float lo, float hi) { return Unpack(float2{lo, hi}, float2{lo, hi}); }
+    float2 Unpack(float lo, float hi) const { return Unpack(float2{lo, hi}, float2{lo, hi}); }
+
+    T GetPackedVal() const { return m_packed_val; }
 };
 
 template <class T, int t_x_num_bits, int t_y_num_bits, int t_z_num_bits>
@@ -92,14 +96,16 @@ public:
     }
     void Pack(float3 val, float lo, float hi) { Pack(val, float2{lo, hi}, float2{lo, hi}, float2{lo, hi}); }
 
-    float3 Unpack(float2 x_lohi, float2 y_lohi, float2 z_lohi) {
+    float3 Unpack(float2 x_lohi, float2 y_lohi, float2 z_lohi) const {
         return float3{
             unpack_float(m_packed_val >> (t_y_num_bits + t_z_num_bits), x_lohi.x, x_lohi.y, t_x_num_bits),
             unpack_float((m_packed_val >> t_z_num_bits) & first_bits_mask<T>(t_y_num_bits), y_lohi.x, y_lohi.y, t_y_num_bits),
             unpack_float(m_packed_val & first_bits_mask<T>(t_z_num_bits), z_lohi.x, z_lohi.y, t_z_num_bits),
         };
     }
-    float3 Unpack(float lo, float hi) { return Unpack(float2{lo, hi}, float2{lo, hi}, float2{lo, hi}); }
+    float3 Unpack(float lo, float hi) const { return Unpack(float2{lo, hi}, float2{lo, hi}, float2{lo, hi}); }
+
+    T GetPackedVal() const { return m_packed_val; }
 };
 
 #undef CHECK_NUM_BITS
