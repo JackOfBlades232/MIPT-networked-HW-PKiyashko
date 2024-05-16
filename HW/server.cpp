@@ -1,8 +1,10 @@
 #include "entity.hpp"
+#include "math_utils.hpp"
 #include "protocol.hpp"
 #include "history.hpp"
 #include "polling_service.hpp"
 #include "shared_consts.hpp"
+#include "quantization.hpp"
 
 #include <cassert>
 #include <cstdint>

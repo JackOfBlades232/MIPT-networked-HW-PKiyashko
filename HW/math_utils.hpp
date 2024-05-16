@@ -1,6 +1,14 @@
 #pragma once
 #include <cmath>
 
+struct float2 {
+    float x, y;
+};
+
+struct float3 {
+    float x, y, z;
+};
+
 inline float move_to(float from, float to, float dt, float vel)
 {
     float d = vel * dt;
